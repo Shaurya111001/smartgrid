@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: billing-service
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8084

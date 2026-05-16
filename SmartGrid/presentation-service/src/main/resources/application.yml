@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: presentation-service
+  kafka:
+    bootstrap-servers: localhost:9092
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8085
