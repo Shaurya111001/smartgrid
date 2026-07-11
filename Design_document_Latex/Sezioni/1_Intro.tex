@@ -1,0 +1,52 @@
+\section{Introduction}
+
+This document describes the design and implementation of \textbf{SmartGrid}, a distributed
+smart-power-grid management platform built as a set of independently deployable \textbf{Spring
+Boot} microservices coordinated exclusively through \textbf{Apache Kafka} (single-broker
+\textbf{KRaft} mode, no ZooKeeper), complemented by a \textbf{Spark Structured Streaming} job
+that provides real-time district-level analytics and an optional \textbf{C++/MPI} simulator able
+to inject synthetic telemetry at scale.
+
+The guiding design principle is \textbf{event sourcing via choreography}: every service owns
+exactly one Kafka topic as its append-only write-ahead log, exposes a REST API backed purely by
+an in-memory projection of that log, and rebuilds this projection from offset zero on startup
+before serving a single request. No service ever calls another service synchronously over REST to
+read or validate its data; cross-service knowledge --- e.g. \texttt{node-manager} confirming that
+a \texttt{userId} exists before accepting a new node --- is obtained exclusively by subscribing to
+the owning service's topic and maintaining a private, read-only materialized view of it. This
+keeps every service independently deployable, restart-safe, and free of synchronous
+inter-service coupling, at the cost of eventual (rather than immediate) cross-service
+consistency.
+
+\subsection*{Design Goals}
+Table~\ref{tab:goals} summarizes the platform's four main design goals and the mechanism that
+realizes each of them.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}p{0.16\linewidth} X X@{}}
+\toprule
+\textbf{Goal} & \textbf{Guarantee} & \textbf{Mechanism} \\
+\midrule
+Durability &
+  Any service can be killed and restarted with zero data loss &
+  \texttt{@EventListener(ApplicationReadyEvent)} replays the service's own topic from offset 0
+  into memory before the REST layer accepts traffic \\
+Decoupling &
+  Services never block on one another; a slow or down peer cannot cascade &
+  Cross-service reads are served by a private, live-updated cache built from a consumed topic
+  (e.g. Node Manager's cache of \texttt{user-events}), never a synchronous REST call \\
+Real-time analytics &
+  District-level net energy balance and cumulative state of charge, continuously updated &
+  \texttt{analytics-service} (Spark Structured Streaming) runs two parallel queries over
+  \texttt{measurement-events}: a sliding-window sum and an unbounded running sum \\
+Load \& scale testing &
+  Synthetic, high-volume telemetry without touching the REST ingestion path &
+  A standalone C++/MPI simulator partitions grid districts across ranks and publishes directly
+  to \texttt{measurement-events}, the same topic the REST path feeds \\
+\bottomrule
+\end{tabularx}
+\caption{Design goals and their implementation.}
+\label{tab:goals}
+\end{table}

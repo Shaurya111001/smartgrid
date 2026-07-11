@@ -1,0 +1,44 @@
+\section{Event Sourcing, Choreography, and Fault Recovery}
+
+\subsection*{Replay-Then-Listen: One Pattern, Every Service}
+Every stateful component in the system --- Account Service's \texttt{User} store, Node Manager's
+cache of \texttt{user-events}, Measurement Service's and Billing Service's caches of
+\texttt{node-events}, Billing Service's accumulator over \texttt{measurement-events}, and
+Presentation Service's three consumed views --- is built with the same idiom: on
+\texttt{ApplicationReadyEvent}, a dedicated replay routine opens a disposable Kafka consumer with
+a fresh, unique \texttt{group.id} and \texttt{auto.offset.reset=earliest}, drains the topic from
+the beginning into the in-memory store, and only then does the service register its live
+\texttt{@KafkaListener} and start accepting REST traffic. This is what makes every service
+\textbf{restart-safe with zero persistent storage}: a service's entire state is, by construction,
+nothing more than a cached fold over its topic(s).
+
+\subsection*{A Subtlety in ``Caught Up'' Detection}
+The replay loop must decide \emph{when} it has drained the topic's backlog, since Kafka never
+signals end-of-log explicitly. The natural heuristic --- stop after $N$ consecutive empty
+\texttt{poll()} calls --- has a race condition: the very first polls of a fresh, uniquely-named
+consumer group return empty \emph{because the group is still rebalancing and has not yet been
+assigned a partition}, not because the topic is empty. If those rebalance-time empty polls are
+counted toward the threshold, the loop can conclude ``caught up'' at the exact moment partitions
+are finally assigned --- before a single historical record has been read --- silently replaying
+zero events on an otherwise healthy restart. The fix is to gate the empty-poll counter on
+\texttt{consumer.assignment()} being non-empty, so only genuine post-assignment empty polls count
+toward completion. This is the kind of correctness detail that a unit test over a mocked consumer
+will not catch, but a real kill-and-restart integration test will.
+
+\subsection*{Choreography Over Orchestration}
+No component acts as a saga coordinator or orchestrator: cross-service consistency emerges purely
+from independent replay of shared topics. The clearest example is Node Manager validating a
+node's \texttt{userId}: rather than issuing a synchronous \texttt{GET} to Account Service, which
+would make node creation unavailable whenever Account Service happens to be down, it consults its
+own continuously-updated \texttt{user-events} projection. The trade-off is explicit: a
+\texttt{userId} that was just registered may not yet be visible to Node Manager if its consumer
+lags, so validation is eventually, rather than immediately, consistent --- an acceptable cost
+given the system's read-heavy, analytics-oriented workload.
+
+\subsection*{Time-Triggered Aggregation in Billing Service}
+Billing Service deliberately mixes two consistency models: it accumulates usage
+\emph{continuously} from the live \texttt{@KafkaListener} on \texttt{measurement-events}, but only
+\emph{emits} the resulting \texttt{billing-events} on a fixed 60-second \texttt{@Scheduled}
+cadence. This decouples the high-frequency, per-reading input rate from the low-frequency,
+per-user output rate, avoiding one \texttt{billing-events} message per raw measurement while still
+keeping the underlying usage total always up to date in memory.

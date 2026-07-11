@@ -1,0 +1,50 @@
+\section{Implementation and Verification}
+
+\subsection*{Technology Stack}
+\begin{itemize}
+\item \textbf{Microservices:} Java~21, Spring Boot, one Maven module per service under a single
+  reactor \texttt{pom.xml}; each exposes a small REST controller and one or more Kafka
+  producer/consumer components, with no shared library beyond the event JSON shapes documented in
+  \texttt{kafka-topics.md}.
+\item \textbf{Messaging:} Apache Kafka 7.6 in \textbf{KRaft} mode (self-managed metadata quorum,
+  no ZooKeeper), a single broker/controller node for this deployment, six topics in total
+  (\texttt{user-}, \texttt{node-}, \texttt{measurement-}, \texttt{billing-events},
+  \texttt{district-window-stats}, \texttt{district-soc-state}).
+\item \textbf{Analytics:} Apache Spark~3.5 Structured Streaming (Java~17), submitted as a plain
+  \texttt{spark-submit} job rather than a Spring service, reading and writing Kafka directly via
+  the \texttt{spark-sql-kafka-0-10} connector.
+\item \textbf{Load simulation:} a standalone C++17/CMake project (\texttt{simulation/}) that
+  models grid districts of producer/consumer/accumulator nodes; \textbf{MPI} is used purely to
+  \emph{statically partition districts across ranks} (round-robin,
+  \texttt{PartitionStrategy::district\_partition}) so each rank simulates an independent subset in
+  parallel --- not for inter-rank communication --- with a no-MPI single-process stub as an
+  automatic CMake fallback. When built with \texttt{librdkafka}, it can publish directly to
+  \texttt{measurement-events}, standing in for the REST ingestion path at much higher volume.
+\item \textbf{Deployment:} Docker Compose orchestrates all seven containers (Kafka $+$ five
+  Spring services $+$ the Spark job); a dependency-free vanilla-JS dashboard
+  (\texttt{frontend/index.html}) talks directly to Account Service, Node Manager and Presentation
+  Service over REST for the UI.
+\end{itemize}
+
+\subsection*{Verification}
+The system was verified end to end against the live Docker Compose stack, not only at the unit
+level:
+\begin{itemize}
+\item \textbf{Ingestion chain:} an automated script registers a user, adds a node for it, and
+  submits a measurement, confirming at each step that the downstream service correctly consumed
+  the upstream event --- e.g. Node Manager accepting the node \emph{because} it had already
+  replayed the matching \texttt{UserRegistered} event.
+\item \textbf{Fault recovery:} Account Service was killed and restarted mid-test, after several
+  users had been registered; all users were confirmed present again after replay, validating that
+  restart-safety holds under a real process kill, not just a clean shutdown.
+\item \textbf{Streaming analytics:} the Spark job was confirmed to consume live
+  \texttt{measurement-events} and produce correctly-shaped output on \texttt{district-soc-state},
+  observed directly via a Kafka console consumer.
+\end{itemize}
+
+\subsection*{Conclusion}
+By making Kafka the single, durable source of truth and requiring every service to derive its
+state purely by replaying topics it does not own, the system achieves independent deployability,
+zero-persistent-storage restart safety, and a clean separation between transactional services,
+streaming analytics, and load generation --- without any component needing to know about the
+internals of another.

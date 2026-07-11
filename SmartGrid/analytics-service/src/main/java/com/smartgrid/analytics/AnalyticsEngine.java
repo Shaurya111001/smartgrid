@@ -29,7 +29,7 @@ public class AnalyticsEngine {
 
         Dataset<Row> raw = spark.readStream()
                 .format("kafka")
-                .option("kafka.bootstrap.servers", System.getenv().getOrDefault("KAFKA_BOOTSTRAP", "localhost:9092"))
+                .option("kafka.bootstrap.servers", System.getenv().getOrDefault("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"))
                 .option("subscribe", System.getenv().getOrDefault("INPUT_TOPIC", "measurement-events"))
                 .load();
 
@@ -57,7 +57,7 @@ public class AnalyticsEngine {
                 .selectExpr("CAST(districtId AS STRING) AS key", "to_json(struct(*)) AS value")
                 .writeStream()
                 .format("kafka")
-                .option("kafka.bootstrap.servers", System.getenv().getOrDefault("KAFKA_BOOTSTRAP", "localhost:9092"))
+                .option("kafka.bootstrap.servers", System.getenv().getOrDefault("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"))
                 .option("topic", System.getenv().getOrDefault("OUTPUT_WINDOW_TOPIC", "district-window-stats"))
                 .option("checkpointLocation", "analytics_checkpoint/windowed")
                 .start();
@@ -71,7 +71,7 @@ public class AnalyticsEngine {
                 .selectExpr("CAST(districtId AS STRING) AS key", "to_json(struct(*)) AS value")
                 .writeStream()
                 .format("kafka")
-                .option("kafka.bootstrap.servers", System.getenv().getOrDefault("KAFKA_BOOTSTRAP", "localhost:9092"))
+                .option("kafka.bootstrap.servers", System.getenv().getOrDefault("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"))
                 .option("topic", System.getenv().getOrDefault("OUTPUT_SOC_TOPIC", "district-soc-state"))
                 .option("checkpointLocation", "analytics_checkpoint/soc")
                 .outputMode("complete")

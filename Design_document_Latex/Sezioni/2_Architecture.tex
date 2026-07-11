@@ -1,0 +1,93 @@
+\section{Architecture}
+
+\subsection*{Service Catalog}
+\begin{itemize}
+\item \textbf{Account Service} (:8081): owns \texttt{User} records; publishes
+  \texttt{user-events} (\texttt{UserRegistered}/\texttt{Updated}/\texttt{Deleted}, keyed by
+  \texttt{userId}) on every mutation from its \texttt{/users/*} REST API.
+\item \textbf{Node Manager} (:8082): owns \texttt{Node} records (id, owning user, district,
+  producer/consumer/accumulator type); publishes \texttt{node-events} keyed by \texttt{nodeId}.
+  Consumes \texttt{user-events} purely to validate that a node's \texttt{userId} exists before
+  accepting it --- a read-only materialized view, not a synchronous call to Account Service.
+\item \textbf{Measurement Service} (:8083): stateless ingestion point for raw meter readings; a
+  private cache replays \texttt{node-events} to enrich each reading with its district/type before
+  publishing the canonical \texttt{measurement-events} (\texttt{MeasurementReported}, keyed by
+  \texttt{districtId} for per-district ordering).
+\item \textbf{Billing Service} (:8084): accumulates per-user kWh usage in memory from
+  \texttt{measurement-events} (resolving \texttt{nodeId}$\to$\texttt{userId} through its own
+  replayed \texttt{node-events} cache); a \texttt{@Scheduled} task drains the accumulator every
+  60\,s and emits \texttt{billing-events} (\texttt{UsageRecordCreated}) at a fixed tariff.
+\item \textbf{Analytics Service}: not a Spring Boot service but a \textbf{Spark Structured
+  Streaming} job (\texttt{spark-submit}). It signs each measurement (producer $+$, consumer $-$)
+  and runs two continuous queries over \texttt{measurement-events}: a 10-minute/5-minute
+  sliding-window sum per district into \texttt{district-window-stats}, and an unbounded
+  cumulative sum (state of charge) per district, in \emph{complete} output mode, into
+  \texttt{district-soc-state}.
+\item \textbf{Presentation Service} (:8085): the system's pure CQRS \emph{read side}. It produces
+  nothing; it consumes \texttt{node-events}, \texttt{billing-events} and
+  \texttt{district-window-stats}/\texttt{district-soc-state}, stitching all three into the REST
+  surface (\texttt{/users/\{id\}/nodes}, \texttt{/users/\{id\}/bills},
+  \texttt{/analytics/districts}) consumed by the dashboard.
+\end{itemize}
+
+\begin{figure}[h]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  svc/.style={draw, rounded corners, minimum width=3.1cm, minimum height=0.9cm, align=center, font=\small},
+  kafkabox/.style={draw, rounded corners, minimum width=3cm, minimum height=5.2cm, align=center, font=\small\bfseries, fill=gray!8},
+  simbox/.style={draw, dashed, rounded corners, minimum width=3.1cm, minimum height=0.9cm, align=center, font=\small},
+  lbl/.style={font=\scriptsize, align=center},
+  >=Stealth
+]
+
+% Left column: REST ingestion / CRUD services
+\node[svc] (acc) at (-5.4, 3.1) {Account Service\\\scriptsize :8081};
+\node[svc] (nm)  at (-5.4, 1.4) {Node Manager\\\scriptsize :8082};
+\node[svc] (ms)  at (-5.4, -0.3) {Measurement Service\\\scriptsize :8083};
+\node[simbox] (sim) at (-5.4, -2.3) {C++/MPI Simulator\\\scriptsize (alt. producer)};
+
+% Center: Kafka broker
+\node[kafkabox] (kafka) at (0, 0.4) {Apache Kafka\\(KRaft, single broker)};
+
+% Right column: stream processors / CQRS read side
+\node[svc] (bill) at (5.4, 3.1) {Billing Service\\\scriptsize :8084};
+\node[svc] (an)   at (5.4, 1.4) {Analytics Service\\\scriptsize (Spark Structured Streaming)};
+\node[svc] (pres) at (5.4, -0.3) {Presentation Service\\\scriptsize :8085};
+
+% --- Left column <-> Kafka ---
+\draw[->] (acc.east) -- ($(kafka.west)+(0,2.3)$) node[lbl, midway, above] {user-events};
+
+\draw[->] (nm.east) -- ($(kafka.west)+(0,1.7)$) node[lbl, midway, above] {node-events};
+\draw[->] ($(kafka.west)+(0,1.2)$) -- (nm.east) node[lbl, midway, below] {user-events};
+
+\draw[->] (ms.east) -- ($(kafka.west)+(0,0.5)$) node[lbl, midway, above] {measurement-events};
+\draw[->] ($(kafka.west)+(0,0.0)$) -- (ms.east) node[lbl, midway, below] {node-events};
+
+\draw[->, dashed] (sim.east) -- ($(kafka.west)+(0,-1.8)$) node[lbl, midway, below] {measurement-events};
+
+% --- Kafka <-> right column ---
+\draw[->] ($(kafka.east)+(0,2.3)$) -- (bill.west) node[lbl, midway, above] {measurement-events};
+\draw[->] (bill.west) -- ($(kafka.east)+(0,1.7)$) node[lbl, midway, below] {billing-events (60s)};
+
+\draw[->] ($(kafka.east)+(0,1.0)$) -- (an.west) node[lbl, midway, above] {measurement-events};
+\draw[->] (an.west) -- ($(kafka.east)+(0,0.4)$) node[lbl, midway, below] {window-/soc-stats};
+
+\draw[->] ($(kafka.east)+(0,-1.0)$) -- (pres.west) node[lbl, midway, above] {node-/billing-events,\\district-stats};
+
+\end{tikzpicture}
+}
+\caption{Publish/subscribe topology: every arrow is a Kafka topic, never a direct service call.
+  Solid arrows are the REST-ingestion path; the dashed arrow shows the C++/MPI simulator
+  publishing directly into \texttt{measurement-events} as an alternate, higher-volume producer.
+  A vanilla-JS dashboard (not shown) additionally polls Account Service, Node Manager and
+  Presentation Service directly over REST to render the UI.}
+\label{fig:arch}
+\end{figure}
+
+\subsection*{State Ownership}
+No two services ever hold the same row of truth: each owns exactly the state derived from the
+topic(s) it consumes, and Kafka --- not any service's database --- is the durable system of
+record. This makes Presentation Service a textbook CQRS query side: three independently owned
+write models (\texttt{node-events}, \texttt{billing-events}, \texttt{district-*-stats}) are
+joined only in the read projection, never in the write path.
