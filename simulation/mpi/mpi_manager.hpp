@@ -22,6 +22,13 @@ public:
     int get_rank() const;
 
     int get_size() const;
+
+    /** Sums `local` across every rank and returns the result to all of them
+     *  (MPI_Allreduce/MPI_SUM). This is the actual point-to-point communication
+     *  cost that node_partition incurs and district_partition doesn't -- the
+     *  reason the two strategies can be compared on "communication overhead" at
+     *  all. The stub (no-MPI, single-process) build just returns `local` as-is. */
+    double allreduce_sum(double local) const;
 };
 
 #endif

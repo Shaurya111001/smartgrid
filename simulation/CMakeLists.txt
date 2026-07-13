@@ -68,9 +68,17 @@ option(BUILD_WITH_KAFKA "Enable building the Kafka EventPublisher (requires libr
 # third-party JSON dependency is required.
 
 if(BUILD_WITH_KAFKA)
-  find_library(RDKAFKA_LIB rdkafka)
-  if(RDKAFKA_LIB)
-    message(STATUS "Found librdkafka: ${RDKAFKA_LIB}")
+  # Homebrew installs (esp. Apple Silicon /opt/homebrew) aren't always on CMake's
+  # default search path, so hint explicitly in addition to the default search.
+  find_library(RDKAFKA_LIB rdkafka HINTS /opt/homebrew/lib /usr/local/lib)
+  # Homebrew installs rdkafka.h under include/librdkafka/, but the code includes
+  # it as <rdkafka.h>, so the search must land on that subdirectory directly.
+  find_path(RDKAFKA_INCLUDE_DIR rdkafka.h
+    HINTS /opt/homebrew/include /usr/local/include
+    PATH_SUFFIXES librdkafka)
+  if(RDKAFKA_LIB AND RDKAFKA_INCLUDE_DIR)
+    message(STATUS "Found librdkafka: ${RDKAFKA_LIB} (headers: ${RDKAFKA_INCLUDE_DIR})")
+    target_include_directories(simulation_app PRIVATE ${RDKAFKA_INCLUDE_DIR})
     target_link_libraries(simulation_app PRIVATE ${RDKAFKA_LIB})
     target_compile_definitions(simulation_app PRIVATE RDKAFKA_AVAILABLE)
   else()

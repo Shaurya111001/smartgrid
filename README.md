@@ -27,6 +27,10 @@ A modern web portal (`frontend/index.html`) provides a user interface for managi
 - Maven 3.6+
 - Docker and Docker Compose
 - Internet access to Docker Hub (to pull `confluentinc/cp-kafka:7.6.0` and `apache/spark:3.5.3-java17-python3`)
+- CMake 3.16+ and a C++17 compiler (for the optional MPI load simulator in `simulation/`)
+- Open MPI and librdkafka, only if you want the simulator to actually publish to Kafka (see
+  [Running the MPI Simulator](#running-the-mpi-simulator)) — without them it still builds and
+  runs, just as a single-process, Kafka-less stub
 
 ## Setup and Installation
 
@@ -151,6 +155,93 @@ docker exec smartgrid-kafka kafka-console-consumer --bootstrap-server localhost:
 `district-window-stats` only emits once its 5-minute watermark passes, so don't expect immediate
 output there — `district-soc-state` (complete-mode, no watermark) updates on every batch instead.
 
+## Running the MPI Simulator
+
+`simulation/` is a standalone C++17/CMake project (independent of the Maven build) that models
+grid districts of producer/consumer/accumulator nodes and, if built with Kafka support, publishes
+directly to `measurement-events` — the same topic `measurement-service`'s REST endpoint feeds. Use
+it to load-test the pipeline or exercise `analytics-service` without going through the REST API.
+
+### 1. Install the optional native dependencies (macOS/Homebrew)
+```bash
+brew install open-mpi librdkafka
+```
+Without these, CMake automatically falls back to a single-process build with Kafka publishing
+compiled out (`kafka/event_publisher.cpp`'s stub branch) — useful for a quick local test of the
+simulation logic itself, but it won't produce anything on Kafka.
+
+### 2. Build
+```bash
+cmake -S simulation -B simulation/build
+cmake --build simulation/build
+```
+Check the CMake configure output for both of these lines — if either is missing, the simulator
+will silently run without Kafka:
+```
+-- Found MPI_CXX: ...
+-- Found librdkafka: ... (headers: .../include/librdkafka)
+```
+
+### 3. Run it against the live Kafka broker
+Kafka must already be up (`docker compose up -d kafka` at minimum) and reachable at
+`localhost:9092` — the simulator runs on the host, not in Docker, so it uses the
+external/host-mapped listener, not the internal `kafka:29092` address the other services use.
+```bash
+export KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+mpirun -np 2 --oversubscribe ./simulation/build/simulation_app [scenario] [strategy] [district_count]
+```
+Args (all optional, shown with their defaults):
+- `scenario`: `sparse` (default, few nodes/district) or `dense` (hundreds of nodes/district)
+- `strategy`: `roundrobin` (default), `weighted`, or `nodepartition` — see below
+- `district_count`: number of districts to generate (default `4`)
+
+Three partitioning strategies are available, to satisfy the assignment's requirement to compare
+different task-allocation mappings:
+- **`roundrobin`** (`PartitionStrategy::district_partition`): whole districts assigned round-robin
+  to ranks. Zero inter-rank communication, but imbalanced if district sizes vary.
+- **`weighted`** (`PartitionStrategy::weighted_district_partition`): whole districts, greedily
+  assigned to the currently least-loaded rank by node count. Still zero communication, but stays
+  balanced even with mixed dense/sparse districts in the same run.
+- **`nodepartition`** (`PartitionStrategy::node_partition`): individual *nodes* (not whole
+  districts) are split across ranks. This is the only strategy with real inter-rank communication —
+  every rank computes a partial sum for every district's locally-owned nodes, then all ranks
+  combine their partial sums via a collective `MPI_Allreduce` (see
+  `District::simulate_step_distributed`) to get the true district-wide balance. This is what gives
+  you actual, non-zero "communication overhead" numbers to compare against the other two.
+
+Each run's results are tagged by configuration in `results/<scenario>_<strategy>_p<N>/`, including
+a `benchmark.csv` with per-rank timing — so you can run all three strategies (and both scenarios)
+and diff the CSVs directly instead of copy-pasting terminal output. For example, to build the
+comparison the assignment asks for:
+```bash
+for strategy in roundrobin weighted nodepartition; do
+  mpirun -np 4 --oversubscribe ./simulation/build/simulation_app dense $strategy 8
+done
+cat results/dense_*_p4/benchmark.csv
+```
+
+### 4. Verify the full MPI → Kafka → Spark flow
+```bash
+# Confirm the simulator's own messages landed in measurement-events
+docker exec smartgrid-kafka kafka-console-consumer --bootstrap-server localhost:9092 \
+  --topic measurement-events --from-beginning --timeout-ms 15000 2>/dev/null | grep MEASUREMENT | head -5
+
+# Confirm analytics-service picked them up and computed real (non-zero) per-district totals
+docker exec smartgrid-kafka kafka-console-consumer --bootstrap-server localhost:9092 \
+  --topic district-soc-state --from-beginning --timeout-ms 15000 2>/dev/null | tail -5
+```
+You should see `current_SOC` values for districts `1` and `2` (the simulator's synthetic
+districts), alongside `D-Central` (from any REST-submitted measurements) — proof the same
+analytics job is correctly aggregating both sources. `current_SOC` reflects only accumulators'
+own applied (capacity-clamped) charge deltas, so it should stay bounded and physically plausible
+(roughly in the hundreds, not growing without limit) — if you see it climbing into the thousands
+unboundedly, something regressed (see the "district-soc-state shows 0.0" troubleshooting entry
+below for the related failure mode).
+
+> **Note:** the simulator's district/node IDs (small integers like `"1"`, `"2"`) are synthetic and
+> don't correspond to any node registered via Node Manager, so `billing-service` won't be able to
+> resolve them to a real user — this simulator is for analytics/load-testing, not billing.
+
 ## Testing
 
 Run the automated test script to verify end-to-end functionality:
@@ -243,6 +334,28 @@ The services expose REST APIs. Refer to the test script (`test_day5.sh`) for exa
 - **Restarting a service after a fresh restart shows fewer records than expected:** give it more
   than a couple of seconds — Kafka consumer-group rebalance on a brand-new `group.id` can take
   several seconds before any records are actually read back.
+- **`simulation_app` builds but never publishes to Kafka, even with librdkafka installed:** older
+  versions of `kafka/event_publisher.cpp` checked `#ifdef RDKAFKA_LIB` (a stray CMake *variable*
+  name), while `CMakeLists.txt` only ever defines the compiler macro `RDKAFKA_AVAILABLE` — so the
+  Kafka code path silently compiled out as dead code. This is fixed (both now use
+  `RDKAFKA_AVAILABLE`); if you see this again after editing the source, check for the mismatch.
+- **CMake configure warns `librdkafka not found` despite `brew install librdkafka`:** on Apple
+  Silicon, `/opt/homebrew` isn't always on CMake's default search path, and Homebrew installs
+  `rdkafka.h` under `include/librdkafka/` while the code includes it as `<rdkafka.h>` (no
+  subdirectory) — `CMakeLists.txt`'s `find_library`/`find_path` calls now pass explicit `HINTS`
+  and `PATH_SUFFIXES librdkafka` to handle both. If it still fails, confirm with
+  `brew --prefix librdkafka` that the paths match what's hinted.
+- **`simulation_app` crashes with `Abort trap: 6` / a libmalloc "pointer being freed was not
+  allocated" error on exit:** `rd_kafka_new()` takes ownership of the `rd_kafka_conf_t*` passed to
+  it and frees it internally on success; the old destructor also called `rd_kafka_conf_destroy()`
+  on it — a double-free. Fixed by clearing the cached `conf` pointer after a successful
+  `rd_kafka_new()` call.
+- **`district-soc-state` shows `0.0` for a district that should have real producer/consumer
+  activity:** `analytics-service`'s CASE WHEN only signs measurements where `type` is exactly
+  `producer` or `consumer` (lowercase, per `kafka-topics.md`). Check whatever published the
+  measurement is using those literal values, not something else (e.g. `SmartMeter`,
+  `PRODUCTION`/`CONSUMPTION`) — both the REST example above and `simulation/domain/district.cpp`
+  were fixed to match this shape.
 
 ## License
 

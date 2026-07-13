@@ -35,12 +35,12 @@ public class UserController {
         String userId = "u_" + UUID.randomUUID().toString().substring(0, 8);
         User user = new User(userId, request.getName(), request.getEmail());
 
-        // Save locally
-        userRepository.save(user);
-
-        // Publish event
+        // Publish first: only commit to the local store once Kafka has actually
+        // acknowledged the event, so the two can never diverge on a publish failure.
         UserEvent event = new UserEvent("UserRegistered", userId, user.getName(), user.getEmail());
         userEventProducer.publish(event);
+
+        userRepository.save(user);
 
         log.info("Registered user: {}", user);
         return ResponseEntity.status(HttpStatus.CREATED).body(user);
@@ -56,10 +56,11 @@ public class UserController {
         }
 
         User user = new User(id, request.getName(), request.getEmail());
-        userRepository.save(user);
 
         UserEvent event = new UserEvent("UserUpdated", id, user.getName(), user.getEmail());
         userEventProducer.publish(event);
+
+        userRepository.save(user);
 
         log.info("Updated user: {}", user);
         return ResponseEntity.ok(user);
@@ -73,10 +74,10 @@ public class UserController {
                     .body(Map.of("error", "User not found: " + id));
         }
 
-        userRepository.deleteById(id);
-
         UserEvent event = new UserEvent("UserDeleted", id, null, null);
         userEventProducer.publish(event);
+
+        userRepository.deleteById(id);
 
         log.info("Deleted userId={}", id);
         return ResponseEntity.ok(Map.of("message", "User deleted", "userId", id));

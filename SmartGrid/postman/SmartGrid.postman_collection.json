@@ -1,0 +1,367 @@
+{
+  "info": {
+    "_postman_id": "84157598-ea89-49f3-bf6e-13bb90ef1658",
+    "name": "SmartGrid",
+    "description": "All REST endpoints across SmartGrid's microservices (account-service, node-manager, measurement-service, presentation-service). billing-service has no REST API -- it only consumes Kafka events and runs a 60s scheduled job. Requests are ordered so you can run them top-to-bottom: registering a user auto-fills {{userId}} for later requests, and creating a node auto-fills {{nodeId}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "accountBaseUrl", "value": "http://localhost:8081", "type": "string" },
+    { "key": "nodeBaseUrl", "value": "http://localhost:8082", "type": "string" },
+    { "key": "measurementBaseUrl", "value": "http://localhost:8083", "type": "string" },
+    { "key": "presentationBaseUrl", "value": "http://localhost:8085", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "nodeId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "id": "087bfc86-5e33-4860-b4ba-e34353c3b437",
+      "name": "Account Service (:8081)",
+      "item": [
+        {
+          "id": "9b36a670-0e05-4879-b0f7-c39b0657572a",
+          "name": "Register User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "e1a1a1a1-0001-4001-8001-000000000001",
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('userId', body.userId);",
+                  "    console.log('Saved userId =', body.userId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alice Smith\",\n  \"email\": \"alice@example.com\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{accountBaseUrl}}/users/register",
+              "host": ["{{accountBaseUrl}}"],
+              "path": ["users", "register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "bce62d4c-cbf6-4fe5-a533-864e7f4b83b9",
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{accountBaseUrl}}/users",
+              "host": ["{{accountBaseUrl}}"],
+              "path": ["users"]
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "c7d08c2d-68de-44ea-bd07-733ba3303a29",
+          "name": "Get User By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{accountBaseUrl}}/users/{{userId}}",
+              "host": ["{{accountBaseUrl}}"],
+              "path": ["users", "{{userId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "c5432e90-8907-4ed1-83c5-255b4e3939bf",
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alice Smith Updated\",\n  \"email\": \"alice.updated@example.com\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{accountBaseUrl}}/users/{{userId}}",
+              "host": ["{{accountBaseUrl}}"],
+              "path": ["users", "{{userId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "cb70ad8d-8fa0-4718-abdf-ae6e5754feed",
+          "name": "Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{accountBaseUrl}}/users/{{userId}}",
+              "host": ["{{accountBaseUrl}}"],
+              "path": ["users", "{{userId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "d9f39b16-a271-48fb-b582-c4f5c73b732a",
+      "name": "Node Manager (:8082)",
+      "item": [
+        {
+          "id": "43c2ede3-c370-489c-8f6c-f54941f1e049",
+          "name": "Create Node",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "e1a1a1a1-0002-4002-8002-000000000002",
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('nodeId', body.nodeId);",
+                  "    console.log('Saved nodeId =', body.nodeId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"districtId\": \"D-Central\",\n  \"type\": \"producer\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{nodeBaseUrl}}/nodes",
+              "host": ["{{nodeBaseUrl}}"],
+              "path": ["nodes"]
+            },
+            "description": "type must be producer, consumer, or accumulator -- other values (e.g. SmartMeter) are accepted but won't contribute to analytics-service's calculations. Requires {{userId}} to already exist (run 'Register User' first) -- node-manager validates this via its own user-events cache, not a call to account-service."
+          },
+          "response": []
+        },
+        {
+          "id": "8c9a5664-07a3-4103-adbf-48d5eac7251c",
+          "name": "Create Node (invalid userId -> expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"u_doesnotexist\",\n  \"districtId\": \"D-Central\",\n  \"type\": \"producer\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{nodeBaseUrl}}/nodes",
+              "host": ["{{nodeBaseUrl}}"],
+              "path": ["nodes"]
+            },
+            "description": "Expect 400 Bad Request: {\"error\":\"User not found: u_doesnotexist\"}"
+          },
+          "response": []
+        },
+        {
+          "id": "e8565ca4-e447-4f2a-b656-bf1d4690cbf4",
+          "name": "Get All Nodes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{nodeBaseUrl}}/nodes",
+              "host": ["{{nodeBaseUrl}}"],
+              "path": ["nodes"]
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "947664dd-2f84-4b38-ab01-cd274f46a3fa",
+          "name": "Get Node By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{nodeBaseUrl}}/nodes/{{nodeId}}",
+              "host": ["{{nodeBaseUrl}}"],
+              "path": ["nodes", "{{nodeId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "66b250bc-8407-4ebf-8524-30c555483f1d",
+          "name": "Update Node",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"districtId\": \"D-Central\",\n  \"type\": \"consumer\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{nodeBaseUrl}}/nodes/{{nodeId}}",
+              "host": ["{{nodeBaseUrl}}"],
+              "path": ["nodes", "{{nodeId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "2c71af58-ea86-4e0b-89af-64cf723074bc",
+          "name": "Delete Node",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{nodeBaseUrl}}/nodes/{{nodeId}}",
+              "host": ["{{nodeBaseUrl}}"],
+              "path": ["nodes", "{{nodeId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "de7c6955-f315-4305-8f9e-618e1cef07fc",
+      "name": "Measurement Service (:8083)",
+      "item": [
+        {
+          "id": "07357ddf-fac8-41c8-8648-7501b3ebb5e5",
+          "name": "Submit Measurement",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nodeId\": \"{{nodeId}}\",\n  \"energyValue\": 12.5\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{measurementBaseUrl}}/measurements",
+              "host": ["{{measurementBaseUrl}}"],
+              "path": ["measurements"]
+            },
+            "description": "Requires {{nodeId}} to exist (run 'Create Node' first) -- measurement-service validates this via its own node-events cache. Publishes MeasurementReported to the measurement-events topic, which both billing-service and analytics-service (Spark) consume."
+          },
+          "response": []
+        },
+        {
+          "id": "783167f1-b332-4dc7-9ec4-7b0f748e28ac",
+          "name": "Submit Measurement (invalid nodeId -> expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nodeId\": \"n_doesnotexist\",\n  \"energyValue\": 12.5\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{measurementBaseUrl}}/measurements",
+              "host": ["{{measurementBaseUrl}}"],
+              "path": ["measurements"]
+            },
+            "description": "Expect 400 Bad Request: {\"error\":\"Unknown node: n_doesnotexist\"}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "b7047b73-8f67-454a-887b-d56ded1b9750",
+      "name": "Presentation Service (:8085, read-only)",
+      "item": [
+        {
+          "id": "f4c734be-6ef5-4d1c-bd2d-4802424c06f6",
+          "name": "Get Nodes For User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{presentationBaseUrl}}/users/{{userId}}/nodes",
+              "host": ["{{presentationBaseUrl}}"],
+              "path": ["users", "{{userId}}", "nodes"]
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "2dd82512-6f74-4d65-b880-d4db6ff75202",
+          "name": "Get Bills For User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{presentationBaseUrl}}/users/{{userId}}/bills",
+              "host": ["{{presentationBaseUrl}}"],
+              "path": ["users", "{{userId}}", "bills"]
+            },
+            "description": "Only populated after billing-service's 60-second scheduled cycle has run at least once since a measurement was submitted for this user."
+          },
+          "response": []
+        },
+        {
+          "id": "a4d90924-5077-46c7-b7de-00d71c40f7aa",
+          "name": "Get All District Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{presentationBaseUrl}}/analytics/districts",
+              "host": ["{{presentationBaseUrl}}"],
+              "path": ["analytics", "districts"]
+            },
+            "description": "Sourced from analytics-service's (Spark) district-window-stats and district-soc-state topics."
+          },
+          "response": []
+        },
+        {
+          "id": "5b6c7d8e-9f01-4234-8567-89abcdef0123",
+          "name": "Get District Analytics By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{presentationBaseUrl}}/analytics/districts/D-Central",
+              "host": ["{{presentationBaseUrl}}"],
+              "path": ["analytics", "districts", "D-Central"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

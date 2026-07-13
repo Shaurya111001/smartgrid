@@ -1,7 +1,7 @@
 {
 	"InstallScripts" : 
 	[
-		"/Users/shauryaadityasingh/Documents/NSDS/simulation/build/cmake_install.cmake"
+		"/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/cmake_install.cmake"
 	],
 	"Parallel" : false
 }

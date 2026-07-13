@@ -69,8 +69,13 @@ public class NodeCacheService {
             consumer.subscribe(Collections.singletonList(TOPIC));
 
             int emptyPolls = 0;
-            while (emptyPolls < 3) {
+            int totalPolls = 0;
+            while (emptyPolls < 3 && totalPolls < 60) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(2));
+                totalPolls++;
+                if (consumer.assignment().isEmpty()) {
+                    continue; // still rebalancing, don't count towards catch-up yet
+                }
                 if (records.isEmpty()) {
                     emptyPolls++;
                 } else {

@@ -9,14 +9,14 @@ void Benchmark::stop() {
 }
 
 void Benchmark::print_duration() {
-
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            end_time - start_time
-        );
-
     std::cout << "Execution time: "
-              << duration.count()
+              << duration_ms()
               << " ms"
               << std::endl;
+}
+
+long Benchmark::duration_ms() const {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time
+        ).count();
 }

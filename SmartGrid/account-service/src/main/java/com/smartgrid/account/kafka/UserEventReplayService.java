@@ -29,7 +29,7 @@ import java.util.UUID;
 public class UserEventReplayService {
 
     private static final Logger log = LoggerFactory.getLogger(UserEventReplayService.class);
-    private static final String TOPIC = "user-events";
+    private static final String TOPIC = UserEventProducer.TOPIC;
 
     private final UserRepository userRepository;
     private final ObjectMapper   objectMapper;

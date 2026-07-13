@@ -10,7 +10,7 @@
 // No external JSON dependency: simulation will emit plain JSON strings built locally.
 
 struct EventPublisher::Impl {
-#ifdef RDKAFKA_LIB
+#ifdef RDKAFKA_AVAILABLE
     rd_kafka_t* rk = nullptr;
     rd_kafka_conf_t* conf = nullptr;
 #endif
@@ -19,7 +19,7 @@ struct EventPublisher::Impl {
 EventPublisher::EventPublisher() : impl(new Impl()) {}
 
 EventPublisher::~EventPublisher() {
-#ifdef RDKAFKA_LIB
+#ifdef RDKAFKA_AVAILABLE
     if (impl->rk) {
         rd_kafka_flush(impl->rk, 5000);
         rd_kafka_destroy(impl->rk);
@@ -32,7 +32,7 @@ EventPublisher::~EventPublisher() {
 }
 
 std::optional<std::unique_ptr<EventPublisher>> EventPublisher::create(const std::string& bootstrap) {
-#ifdef RDKAFKA_LIB
+#ifdef RDKAFKA_AVAILABLE
     auto pub = std::unique_ptr<EventPublisher>(new EventPublisher());
     pub->impl->conf = rd_kafka_conf_new();
 
@@ -47,6 +47,9 @@ std::optional<std::unique_ptr<EventPublisher>> EventPublisher::create(const std:
         std::cerr << "Failed to create rdkafka producer: " << errstr << std::endl;
         return std::nullopt;
     }
+    // rd_kafka_new() takes ownership of conf and frees it internally on success;
+    // clear our pointer so the destructor doesn't double-free it.
+    pub->impl->conf = nullptr;
 
     return std::optional<std::unique_ptr<EventPublisher>>(std::move(pub));
 #else
@@ -57,16 +60,16 @@ std::optional<std::unique_ptr<EventPublisher>> EventPublisher::create(const std:
 }
 
 bool EventPublisher::publish(const std::string& topic, const std::string& key, const std::string& value) {
-#ifdef RDKAFKA_LIB
-    rd_kafka_resp_err_t err;
-
+#ifdef RDKAFKA_AVAILABLE
     rd_kafka_topic_t* rkt = rd_kafka_topic_new(impl->rk, topic.c_str(), nullptr);
     if (!rkt) {
         std::cerr << "Failed to create topic handle" << std::endl;
         return false;
     }
 
-    err = rd_kafka_produce(
+    // rd_kafka_produce() returns 0 on success or -1 on error (with the actual
+    // error code available via rd_kafka_last_error()), not a rd_kafka_resp_err_t.
+    int ret = rd_kafka_produce(
         rkt,
         RD_KAFKA_PARTITION_UA,
         RD_KAFKA_MSG_F_COPY,
@@ -77,8 +80,8 @@ bool EventPublisher::publish(const std::string& topic, const std::string& key, c
 
     rd_kafka_topic_destroy(rkt);
 
-    if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
-        std::cerr << "Failed to produce: " << rd_kafka_err2str(err) << std::endl;
+    if (ret == -1) {
+        std::cerr << "Failed to produce: " << rd_kafka_err2str(rd_kafka_last_error()) << std::endl;
         return false;
     }
 

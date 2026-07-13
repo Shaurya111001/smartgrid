@@ -7,11 +7,15 @@ import com.smartgrid.billing.kafka.MeasurementReplayService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Every 60 seconds, drains accumulated usage and publishes
@@ -63,11 +67,25 @@ public class BillingScheduler {
 
             try {
                 String json = objectMapper.writeValueAsString(event);
-                kafkaTemplate.send(TOPIC, userId, json);
-                log.info("Published UsageRecordCreated: userId={}, kwh={}, cost=€{}",
-                         userId, totalKwh, cost);
+                SendResult<String, String> result =
+                        kafkaTemplate.send(TOPIC, userId, json).get(5, TimeUnit.SECONDS);
+                var meta = result.getRecordMetadata();
+                log.info("Published UsageRecordCreated: userId={}, kwh={}, cost=€{} -> {}-{}@{}",
+                         userId, totalKwh, cost, meta.topic(), meta.partition(), meta.offset());
             } catch (JsonProcessingException e) {
-                log.error("Failed to serialize billing event for userId={}", userId, e);
+                log.error("Failed to serialize billing event for userId={}; usage restored for next cycle", userId, e);
+                replayService.restoreUsage(userId, totalKwh);
+            } catch (ExecutionException e) {
+                log.error("Kafka rejected billing event for userId={}; usage restored for next cycle: {}",
+                        userId, e.getCause() != null ? e.getCause().getMessage() : e.getMessage());
+                replayService.restoreUsage(userId, totalKwh);
+            } catch (TimeoutException e) {
+                log.error("Timed out publishing billing event for userId={}; usage restored for next cycle", userId);
+                replayService.restoreUsage(userId, totalKwh);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("Interrupted publishing billing event for userId={}; usage restored for next cycle", userId);
+                replayService.restoreUsage(userId, totalKwh);
             }
         }
     }

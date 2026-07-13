@@ -15,8 +15,9 @@ double Accumulator::compute_energy() {
     return 0.0;
 }
 
-void Accumulator::update_charge(double district_balance) {
+double Accumulator::update_charge(double district_balance) {
 
+    double before = current_charge;
     current_charge += district_balance;
 
     if (current_charge > capacity)
@@ -24,6 +25,8 @@ void Accumulator::update_charge(double district_balance) {
 
     if (current_charge < 0)
         current_charge = 0;
+
+    return current_charge - before;
 }
 
 double Accumulator::get_charge() const {

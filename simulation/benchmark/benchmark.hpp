@@ -17,6 +17,8 @@ public:
     void stop();
 
     void print_duration();
+
+    long duration_ms() const;
 };
 
 #endif

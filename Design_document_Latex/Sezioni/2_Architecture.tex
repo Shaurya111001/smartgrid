@@ -35,45 +35,45 @@
 \resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
   svc/.style={draw, rounded corners, minimum width=3.1cm, minimum height=0.9cm, align=center, font=\small},
-  kafkabox/.style={draw, rounded corners, minimum width=3cm, minimum height=5.2cm, align=center, font=\small\bfseries, fill=gray!8},
+  kafkabox/.style={draw, rounded corners, minimum width=2.6cm, minimum height=5.4cm, align=center, font=\small\bfseries, fill=gray!8},
   simbox/.style={draw, dashed, rounded corners, minimum width=3.1cm, minimum height=0.9cm, align=center, font=\small},
-  lbl/.style={font=\scriptsize, align=center},
+  lbl/.style={font=\scriptsize, align=center, fill=white, inner sep=1pt},
   >=Stealth
 ]
 
 % Left column: REST ingestion / CRUD services
-\node[svc] (acc) at (-5.4, 3.1) {Account Service\\\scriptsize :8081};
-\node[svc] (nm)  at (-5.4, 1.4) {Node Manager\\\scriptsize :8082};
-\node[svc] (ms)  at (-5.4, -0.3) {Measurement Service\\\scriptsize :8083};
-\node[simbox] (sim) at (-5.4, -2.3) {C++/MPI Simulator\\\scriptsize (alt. producer)};
+\node[svc] (acc) at (-6.3, 3.2) {Account Service\\\scriptsize :8081};
+\node[svc] (nm)  at (-6.3, 1.5) {Node Manager\\\scriptsize :8082};
+\node[svc] (ms)  at (-6.3, -0.4) {Measurement Service\\\scriptsize :8083};
+\node[simbox] (sim) at (-6.3, -2.4) {C++/MPI Simulator\\\scriptsize (alt. producer)};
 
 % Center: Kafka broker
 \node[kafkabox] (kafka) at (0, 0.4) {Apache Kafka\\(KRaft, single broker)};
 
 % Right column: stream processors / CQRS read side
-\node[svc] (bill) at (5.4, 3.1) {Billing Service\\\scriptsize :8084};
-\node[svc] (an)   at (5.4, 1.4) {Analytics Service\\\scriptsize (Spark Structured Streaming)};
-\node[svc] (pres) at (5.4, -0.3) {Presentation Service\\\scriptsize :8085};
+\node[svc] (bill) at (6.3, 3.2) {Billing Service\\\scriptsize :8084};
+\node[svc] (an)   at (6.3, 1.5) {Analytics Service\\\scriptsize (Spark Structured Streaming)};
+\node[svc] (pres) at (6.3, -0.4) {Presentation Service\\\scriptsize :8085};
 
 % --- Left column <-> Kafka ---
-\draw[->] (acc.east) -- ($(kafka.west)+(0,2.3)$) node[lbl, midway, above] {user-events};
+\draw[->] (acc.east) -- ($(kafka.west)+(0,2.4)$) node[lbl, pos=0.4, above] {user-events};
 
-\draw[->] (nm.east) -- ($(kafka.west)+(0,1.7)$) node[lbl, midway, above] {node-events};
-\draw[->] ($(kafka.west)+(0,1.2)$) -- (nm.east) node[lbl, midway, below] {user-events};
+\draw[->] (nm.east) -- ($(kafka.west)+(0,1.7)$) node[lbl, pos=0.4, above] {node-events};
+\draw[->] ($(kafka.west)+(0,0.9)$) -- (nm.east) node[lbl, pos=0.6, below] {user-events};
 
-\draw[->] (ms.east) -- ($(kafka.west)+(0,0.5)$) node[lbl, midway, above] {measurement-events};
-\draw[->] ($(kafka.west)+(0,0.0)$) -- (ms.east) node[lbl, midway, below] {node-events};
+\draw[->] (ms.east) -- ($(kafka.west)+(0,0.1)$) node[lbl, pos=0.4, above] {measurement-events};
+\draw[->] ($(kafka.west)+(0,-0.7)$) -- (ms.east) node[lbl, pos=0.6, below] {node-events};
 
-\draw[->, dashed] (sim.east) -- ($(kafka.west)+(0,-1.8)$) node[lbl, midway, below] {measurement-events};
+\draw[->, dashed] (sim.east) -- ($(kafka.west)+(0,-2.0)$) node[lbl, pos=0.5, below] {measurement-events};
 
 % --- Kafka <-> right column ---
-\draw[->] ($(kafka.east)+(0,2.3)$) -- (bill.west) node[lbl, midway, above] {measurement-events};
-\draw[->] (bill.west) -- ($(kafka.east)+(0,1.7)$) node[lbl, midway, below] {billing-events (60s)};
+\draw[->] ($(kafka.east)+(0,2.4)$) -- (bill.west) node[lbl, pos=0.6, above] {measurement-events};
+\draw[->] (bill.west) -- ($(kafka.east)+(0,1.6)$) node[lbl, pos=0.4, below] {billing-events (60s)};
 
-\draw[->] ($(kafka.east)+(0,1.0)$) -- (an.west) node[lbl, midway, above] {measurement-events};
-\draw[->] (an.west) -- ($(kafka.east)+(0,0.4)$) node[lbl, midway, below] {window-/soc-stats};
+\draw[->] ($(kafka.east)+(0,0.6)$) -- (an.west) node[lbl, pos=0.6, above] {measurement-events};
+\draw[->] (an.west) -- ($(kafka.east)+(0,-0.2)$) node[lbl, pos=0.4, below] {window-/soc-stats};
 
-\draw[->] ($(kafka.east)+(0,-1.0)$) -- (pres.west) node[lbl, midway, above] {node-/billing-events,\\district-stats};
+\draw[->] ($(kafka.east)+(0,-1.6)$) -- (pres.west) node[lbl, pos=0.55, above] {node-/billing-events,\\district-stats};
 
 \end{tikzpicture}
 }

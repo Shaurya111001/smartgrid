@@ -46,11 +46,13 @@ public class NodeController {
         String nodeId = "n_" + UUID.randomUUID().toString().substring(0, 8);
         Node node = new Node(nodeId, request.getUserId(), request.getDistrictId(), request.getType());
 
-        nodeRepository.save(node);
-
+        // Publish first: only commit to the local store once Kafka has actually
+        // acknowledged the event, so the two can never diverge on a publish failure.
         NodeEvent event = new NodeEvent("NodeCreated", nodeId,
                 node.getUserId(), node.getDistrictId(), node.getType());
         nodeEventProducer.publish(event);
+
+        nodeRepository.save(node);
 
         log.info("Created node: {}", node);
         return ResponseEntity.status(HttpStatus.CREATED).body(node);
@@ -66,11 +68,12 @@ public class NodeController {
         }
 
         Node node = new Node(id, request.getUserId(), request.getDistrictId(), request.getType());
-        nodeRepository.save(node);
 
         NodeEvent event = new NodeEvent("NodeUpdated", id,
                 node.getUserId(), node.getDistrictId(), node.getType());
         nodeEventProducer.publish(event);
+
+        nodeRepository.save(node);
 
         log.info("Updated node: {}", node);
         return ResponseEntity.ok(node);
@@ -84,10 +87,10 @@ public class NodeController {
                     .body(Map.of("error", "Node not found: " + id));
         }
 
-        nodeRepository.deleteById(id);
-
         NodeEvent event = new NodeEvent("NodeDeleted", id, null, null, null);
         nodeEventProducer.publish(event);
+
+        nodeRepository.deleteById(id);
 
         log.info("Deleted nodeId={}", id);
         return ResponseEntity.ok(Map.of("message", "Node deleted", "nodeId", id));

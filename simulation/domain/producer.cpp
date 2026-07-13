@@ -2,7 +2,10 @@
 #include <cstdlib>
 #include <random>
 
-static std::default_random_engine generator(std::random_device{}());
+// Fixed seed (not std::random_device) so repeated runs with the same scenario are
+// reproducible -- required to fairly compare partitioning strategies against each
+// other on identical underlying data, per the assignment's comparison requirement.
+static std::default_random_engine generator(42);
 
 Producer::Producer(uint32_t node_id, uint32_t district_id, double max_generation)
     : Node(node_id, district_id, NodeType::PRODUCER),

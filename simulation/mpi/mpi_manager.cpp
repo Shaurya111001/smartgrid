@@ -19,3 +19,9 @@ int MPIManager::get_rank() const {
 int MPIManager::get_size() const {
     return size;
 }
+
+double MPIManager::allreduce_sum(double local) const {
+    double global = 0.0;
+    MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    return global;
+}

@@ -69,6 +69,15 @@ public class MeasurementReplayService {
         return snapshot;
     }
 
+    /**
+     * Re-merges a previously drained amount back into the accumulator. Used when a
+     * billing-events publish fails after drainUsage() already removed it, so a transient
+     * Kafka error doesn't permanently drop that usage from the next billing cycle.
+     */
+    public void restoreUsage(String userId, double kwh) {
+        userUsage.merge(userId, kwh, Double::sum);
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     @Order(2)  // After NodeCacheService
     public void replayOnStartup() {
@@ -87,8 +96,13 @@ public class MeasurementReplayService {
             consumer.subscribe(Collections.singletonList(TOPIC));
 
             int emptyPolls = 0;
-            while (emptyPolls < 3) {
+            int totalPolls = 0;
+            while (emptyPolls < 3 && totalPolls < 60) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(2));
+                totalPolls++;
+                if (consumer.assignment().isEmpty()) {
+                    continue; // still rebalancing, don't count towards catch-up yet
+                }
                 if (records.isEmpty()) {
                     emptyPolls++;
                 } else {

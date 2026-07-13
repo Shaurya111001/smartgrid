@@ -100,7 +100,9 @@ services:
       - INPUT_TOPIC=measurement-events
       - OUTPUT_WINDOW_TOPIC=district-window-stats
       - OUTPUT_SOC_TOPIC=district-soc-state
+      - CHECKPOINT_DIR=/opt/spark/work-dir/analytics_checkpoint
     volumes:
       - ./analytics-service/target:/app/target:ro
       - ${HOME}/.m2/repository:/m2:ro
+      - ./analytics-service/checkpoint:/opt/spark/work-dir/analytics_checkpoint
     command: ["/opt/spark/bin/spark-submit","--jars","/m2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.0/spark-sql-kafka-0-10_2.12-3.5.0.jar,/m2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.0/spark-token-provider-kafka-0-10_2.12-3.5.0.jar,/m2/org/apache/kafka/kafka-clients/3.8.1/kafka-clients-3.8.1.jar,/m2/org/apache/commons/commons-pool2/2.12.1/commons-pool2-2.12.1.jar","--class","com.smartgrid.analytics.AnalyticsEngine","/app/target/analytics-service-0.0.1-SNAPSHOT.jar"]
