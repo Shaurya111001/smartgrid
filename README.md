@@ -220,28 +220,6 @@ done
 cat results/dense_*_p4/benchmark.csv
 ```
 
-### 4. Verify the full MPI → Kafka → Spark flow
-```bash
-# Confirm the simulator's own messages landed in measurement-events
-docker exec smartgrid-kafka kafka-console-consumer --bootstrap-server localhost:9092 \
-  --topic measurement-events --from-beginning --timeout-ms 15000 2>/dev/null | grep MEASUREMENT | head -5
-
-# Confirm analytics-service picked them up and computed real (non-zero) per-district totals
-docker exec smartgrid-kafka kafka-console-consumer --bootstrap-server localhost:9092 \
-  --topic district-soc-state --from-beginning --timeout-ms 15000 2>/dev/null | tail -5
-```
-You should see `current_SOC` values for districts `1` and `2` (the simulator's synthetic
-districts), alongside `D-Central` (from any REST-submitted measurements) — proof the same
-analytics job is correctly aggregating both sources. `current_SOC` reflects only accumulators'
-own applied (capacity-clamped) charge deltas, so it should stay bounded and physically plausible
-(roughly in the hundreds, not growing without limit) — if you see it climbing into the thousands
-unboundedly, something regressed (see the "district-soc-state shows 0.0" troubleshooting entry
-below for the related failure mode).
-
-> **Note:** the simulator's district/node IDs (small integers like `"1"`, `"2"`) are synthetic and
-> don't correspond to any node registered via Node Manager, so `billing-service` won't be able to
-> resolve them to a real user — this simulator is for analytics/load-testing, not billing.
-
 ## Testing
 
 Run the automated test script to verify end-to-end functionality:
@@ -253,21 +231,8 @@ This script performs:
 - User registration
 - Node addition
 - Measurement submission
-- Fault recovery testing
 
-### Fault Recovery, Manually
-Every service rebuilds its entire state by replaying its Kafka topic(s) from the beginning on
-startup (see `*ReplayService`/`*CacheService` classes), so killing and restarting any service
-should never lose data:
-```bash
-curl -X POST http://localhost:8081/users/register -H "Content-Type: application/json" \
-  -d '{"name":"Test User","email":"test@example.com"}'
 
-docker stop account-service && docker start account-service
-sleep 15   # give it time to reconnect to Kafka and replay user-events
-
-curl http://localhost:8081/users   # the user registered above should still be there
-```
 
 ## Development
 
