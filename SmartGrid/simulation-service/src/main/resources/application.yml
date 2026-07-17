@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: simulation-service
+
+server:
+  port: 8086
+
+simulation:
+  binary-path: /opt/simulation/simulation_app
+  working-dir: /opt/simulation
+  kafka-bootstrap-servers: kafka:29092

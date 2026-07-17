@@ -235,9 +235,13 @@
         }
         .badge-producer { background: var(--green-glow); color: var(--green); }
         .badge-consumer { background: var(--accent-glow); color: #a29bfe; }
+        .badge-running   { background: rgba(253,203,110,0.2); color: var(--yellow); }
+        .badge-completed { background: var(--green-glow); color: var(--green); }
+        .badge-failed    { background: var(--red-glow); color: var(--red); }
 
         /* ─── Stats Cards ─────────────────────────────────────── */
         .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+        .stats-row.wrap { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
         .stat-card {
             background: rgba(255,255,255,0.03);
             border: 1px solid var(--border);
@@ -380,6 +384,8 @@
     <div class="nav" id="mainNav" style="display:none;">
         <button id="navNodes" class="active" onclick="showScreen('nodes')">My Nodes</button>
         <button id="navBills" onclick="showScreen('bills')">My Bill</button>
+        <button id="navAnalytics" onclick="showScreen('analytics')">Analytics</button>
+        <button id="navSimulation" onclick="showScreen('simulation')">Simulation</button>
     </div>
 
     <!-- ═══════════ Screen 1: Register ═══════════ -->
@@ -397,6 +403,19 @@
                 </div>
                 <button type="submit" class="btn btn-primary" id="registerBtn" style="width:100%;">
                     Register
+                </button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>🔑 Already Registered?</h2>
+            <form id="loginForm" onsubmit="login(event)">
+                <div class="form-group">
+                    <label for="loginUserId">User ID</label>
+                    <input type="text" id="loginUserId" placeholder="e.g. u_8898d3ed" required>
+                </div>
+                <button type="submit" class="btn btn-primary" id="loginBtn" style="width:100%;">
+                    Log In
                 </button>
             </form>
         </div>
@@ -468,6 +487,77 @@
             </div>
         </div>
     </div>
+
+    <!-- ═══════════ Screen 4: Analytics ═══════════ -->
+    <div class="screen" id="screenAnalytics">
+        <div class="card">
+            <h2>📈 District Analytics</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>District</th><th>Avg Balance</th><th>State of Charge</th><th>Window</th></tr>
+                    </thead>
+                    <tbody id="analyticsTableBody"></tbody>
+                </table>
+            </div>
+            <div class="empty-state" id="analyticsEmpty" style="display:none;">
+                <div class="icon">📉</div>
+                <p>No analytics data yet. It appears once districts report measurements.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Screen 5: Simulation ═══════════ -->
+    <div class="screen" id="screenSimulation">
+        <div class="card">
+            <h2>🖥️ MPI Simulation</h2>
+            <p style="color:var(--text-secondary); font-size:13px; margin-bottom:20px;">
+                Trigger a distributed simulation run and see how it uses compute resources —
+                wall-clock time and CPU utilization per rank, per step. Not grid data.
+            </p>
+            <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-group">
+                    <label for="simScenario">Scenario</label>
+                    <select id="simScenario">
+                        <option value="sparse">Sparse</option>
+                        <option value="dense">Dense</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="simStrategy">Strategy</label>
+                    <select id="simStrategy">
+                        <option value="roundrobin">Round Robin</option>
+                        <option value="weighted">Weighted</option>
+                        <option value="nodepartition">Node Partition</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="simDistricts">Districts (1–20)</label>
+                    <input type="number" id="simDistricts" min="1" max="20" value="4">
+                </div>
+                <div class="form-group">
+                    <label for="simProcesses">Processes (1–8)</label>
+                    <input type="number" id="simProcesses" min="1" max="8" value="2">
+                </div>
+            </div>
+            <button class="btn btn-primary" id="runSimBtn" style="width:100%;" onclick="startSimulation()">
+                ▶ Run Simulation
+            </button>
+        </div>
+
+        <div class="card" id="simResultsCard" style="display:none;">
+            <h2>Run Status <span class="badge" id="simStatusBadge"></span></h2>
+            <div class="stats-row wrap" id="simStatsRow"></div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Step</th><th>Rank</th><th>Wall Clock</th><th>CPU %</th></tr>
+                    </thead>
+                    <tbody id="simMetricsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Toast -->
@@ -479,10 +569,18 @@
         account:      'http://localhost:8081',
         nodeManager:  'http://localhost:8082',
         presentation: 'http://localhost:8085',
+        simulation:   'http://localhost:8086',
     };
 
     // ─── State ───────────────────────────────────────────────
     let currentUser = JSON.parse(localStorage.getItem('smartgrid_user'));
+
+    // Shared by any screen that live-polls (Analytics, Simulation) so only the
+    // currently visible screen is ever polling — showScreen() clears this
+    // whenever navigating away, to avoid leaking intervals.
+    let pollIntervalId = null;
+    let currentSimulationRunId = null;
+    let currentSimulationState = null;
 
     // ─── Init ────────────────────────────────────────────────
     window.addEventListener('DOMContentLoaded', () => {
@@ -520,12 +618,37 @@
         }
     }
 
+    async function login(e) {
+        e.preventDefault();
+        const btn = document.getElementById('loginBtn');
+        const userId = document.getElementById('loginUserId').value.trim();
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Logging in…';
+
+        try {
+            const res = await fetch(`${API.account}/users/${userId}`);
+            if (!res.ok) throw new Error('No user found with that ID');
+            currentUser = await res.json();
+            localStorage.setItem('smartgrid_user', JSON.stringify(currentUser));
+            toast('Logged in as ' + currentUser.name, 'success');
+            enterApp();
+        } catch (err) {
+            toast('Login failed: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Log In';
+        }
+    }
+
     function logout() {
+        if (pollIntervalId) { clearInterval(pollIntervalId); pollIntervalId = null; }
         currentUser = null;
         localStorage.removeItem('smartgrid_user');
         document.getElementById('screenRegister').classList.add('active');
         document.getElementById('screenNodes').classList.remove('active');
         document.getElementById('screenBills').classList.remove('active');
+        document.getElementById('screenAnalytics').classList.remove('active');
+        document.getElementById('screenSimulation').classList.remove('active');
         document.getElementById('mainNav').style.display = 'none';
         document.getElementById('userBar').style.display = 'none';
     }
@@ -543,6 +666,9 @@
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
 
+        // Only the currently visible screen should poll.
+        if (pollIntervalId) { clearInterval(pollIntervalId); pollIntervalId = null; }
+
         if (name === 'nodes') {
             document.getElementById('screenNodes').classList.add('active');
             document.getElementById('navNodes').classList.add('active');
@@ -551,6 +677,18 @@
             document.getElementById('screenBills').classList.add('active');
             document.getElementById('navBills').classList.add('active');
             loadBills();
+        } else if (name === 'analytics') {
+            document.getElementById('screenAnalytics').classList.add('active');
+            document.getElementById('navAnalytics').classList.add('active');
+            loadAnalytics();
+            pollIntervalId = setInterval(loadAnalytics, 5000);
+        } else if (name === 'simulation') {
+            document.getElementById('screenSimulation').classList.add('active');
+            document.getElementById('navSimulation').classList.add('active');
+            // Resume live polling if a run from earlier in this session is still going.
+            if (currentSimulationRunId && currentSimulationState === 'RUNNING') {
+                pollSimulationRun(currentSimulationRunId);
+            }
         }
     }
 
@@ -669,6 +807,149 @@
         } catch (err) {
             toast('Failed to load bills: ' + err.message, 'error');
         }
+    }
+
+    // ─── Analytics ───────────────────────────────────────────
+    async function loadAnalytics() {
+        try {
+            const res = await fetch(`${API.presentation}/analytics/districts`);
+            const districts = await res.json();
+            const tbody = document.getElementById('analyticsTableBody');
+            const empty = document.getElementById('analyticsEmpty');
+
+            if (districts.length === 0) {
+                tbody.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+
+            empty.style.display = 'none';
+            tbody.innerHTML = districts.map(d => {
+                const avgBalance = d.avg_district_balance != null ? d.avg_district_balance.toFixed(2) : '—';
+                const soc        = d.current_SOC != null ? d.current_SOC.toFixed(2) : '—';
+                const window     = d.window
+                    ? `${new Date(d.window.start).toLocaleTimeString()} – ${new Date(d.window.end).toLocaleTimeString()}`
+                    : '—';
+                return `
+                    <tr>
+                        <td><code style="font-size:13px;">${d.districtId}</code></td>
+                        <td>${avgBalance}</td>
+                        <td>${soc}</td>
+                        <td>${window}</td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (err) {
+            toast('Failed to load analytics: ' + err.message, 'error');
+        }
+    }
+
+    // ─── Simulation ──────────────────────────────────────────
+    async function startSimulation() {
+        const btn = document.getElementById('runSimBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Starting…';
+
+        try {
+            const res = await fetch(`${API.simulation}/simulations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scenario:  document.getElementById('simScenario').value,
+                    strategy:  document.getElementById('simStrategy').value,
+                    districts: parseInt(document.getElementById('simDistricts').value, 10),
+                    processes: parseInt(document.getElementById('simProcesses').value, 10),
+                }),
+            });
+            if (!res.ok) throw new Error((await res.json()).error || 'Failed to start run');
+            const status = await res.json();
+
+            currentSimulationRunId = status.runId;
+            currentSimulationState = status.state;
+            document.getElementById('simResultsCard').style.display = 'block';
+            document.getElementById('simMetricsTableBody').innerHTML = '';
+            document.getElementById('simStatsRow').innerHTML = '';
+            renderSimulationStatus(status);
+            pollSimulationRun(currentSimulationRunId);
+            toast('Simulation started', 'success');
+        } catch (err) {
+            toast('Failed to start simulation: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '▶ Run Simulation';
+        }
+    }
+
+    function pollSimulationRun(runId) {
+        if (pollIntervalId) clearInterval(pollIntervalId);
+
+        const tick = async () => {
+            try {
+                const [statusRes, metricsRes] = await Promise.all([
+                    fetch(`${API.simulation}/simulations/${runId}`),
+                    fetch(`${API.presentation}/simulation-metrics/${runId}`),
+                ]);
+                if (statusRes.ok) {
+                    const status = await statusRes.json();
+                    renderSimulationStatus(status);
+                    if (status.state !== 'RUNNING') {
+                        clearInterval(pollIntervalId);
+                        pollIntervalId = null;
+                        toast(
+                            status.state === 'COMPLETED'
+                                ? 'Simulation completed'
+                                : 'Simulation failed (exit code ' + status.exitCode + ')',
+                            status.state === 'COMPLETED' ? 'success' : 'error'
+                        );
+                    }
+                }
+                if (metricsRes.ok) {
+                    renderSimulationMetrics(await metricsRes.json());
+                }
+            } catch (err) {
+                // Transient network hiccup mid-poll -- skip this tick rather than spamming toasts.
+            }
+        };
+
+        tick();
+        pollIntervalId = setInterval(tick, 1500);
+    }
+
+    function renderSimulationStatus(status) {
+        currentSimulationState = status.state;
+        const badge = document.getElementById('simStatusBadge');
+        badge.textContent = status.state;
+        badge.className = 'badge badge-' + status.state.toLowerCase();
+    }
+
+    function renderSimulationMetrics(events) {
+        if (events.length === 0) return;
+
+        // Latest step per rank (for the stat tiles) and cumulative wall-clock per rank.
+        const latestByRank = {};
+        const cumulativeMsByRank = {};
+        for (const e of events) {
+            if (!latestByRank[e.rank] || e.step > latestByRank[e.rank].step) latestByRank[e.rank] = e;
+            cumulativeMsByRank[e.rank] = (cumulativeMsByRank[e.rank] || 0) + e.stepWallClockMs;
+        }
+
+        const ranks = Object.keys(latestByRank).sort((a, b) => a - b);
+        document.getElementById('simStatsRow').innerHTML = ranks.map(rank => `
+            <div class="stat-card">
+                <div class="stat-value">${latestByRank[rank].cpuUtilizationPercent.toFixed(0)}%</div>
+                <div class="stat-label">Rank ${rank} CPU · ${cumulativeMsByRank[rank].toFixed(0)}ms total</div>
+            </div>
+        `).join('');
+
+        const sorted = [...events].sort((a, b) => (a.step - b.step) || (a.rank - b.rank));
+        document.getElementById('simMetricsTableBody').innerHTML = sorted.map(e => `
+            <tr>
+                <td>${e.step}</td>
+                <td>${e.rank}</td>
+                <td>${e.stepWallClockMs.toFixed(1)} ms</td>
+                <td>${e.cpuUtilizationPercent.toFixed(1)}%</td>
+            </tr>
+        `).join('');
     }
 
     // ─── Toast helper ────────────────────────────────────────

@@ -17,17 +17,28 @@
   \texttt{measurement-events} (resolving \texttt{nodeId}$\to$\texttt{userId} through its own
   replayed \texttt{node-events} cache); a \texttt{@Scheduled} task drains the accumulator every
   60\,s and emits \texttt{billing-events} (\texttt{UsageRecordCreated}) at a fixed tariff.
-\item \textbf{Analytics Service}: not a Spring Boot service but a \textbf{Spark Structured
-  Streaming} job (\texttt{spark-submit}). It signs each measurement (producer $+$, consumer $-$)
-  and runs two continuous queries over \texttt{measurement-events}: a 10-minute/5-minute
-  sliding-window sum per district into \texttt{district-window-stats}, and an unbounded
-  cumulative sum (state of charge) per district, in \emph{complete} output mode, into
-  \texttt{district-soc-state}.
+\item \textbf{Analytics Service}: unlike the other services in the catalog, this one is not a
+  Spring Boot application but a Spark Structured Streaming job, launched with
+  \texttt{spark-submit}. It reads every record from \texttt{measurement-events}, treating producer
+  readings as positive and consumer readings as negative, and keeps two figures continuously
+  updated for each district. The first is a rolling average, computed over a 10-minute window and
+  refreshed every 5 minutes, written to \texttt{district-window-stats}. The second is a running
+  total of the district's accumulators' state of charge, written to \texttt{district-soc-state}.
+  This running total always stays within realistic limits, because the C++ simulator (described
+  below) already clamps every charge value to the accumulator's physical capacity before it ever
+  reaches Kafka.
 \item \textbf{Presentation Service} (:8085): the system's pure CQRS \emph{read side}. It produces
-  nothing; it consumes \texttt{node-events}, \texttt{billing-events} and
-  \texttt{district-window-stats}/\texttt{district-soc-state}, stitching all three into the REST
-  surface (\texttt{/users/\{id\}/nodes}, \texttt{/users/\{id\}/bills},
-  \texttt{/analytics/districts}) consumed by the dashboard.
+  nothing; it consumes \texttt{node-events}, \texttt{billing-events},
+  \texttt{district-window-stats}/\texttt{district-soc-state}, and \texttt{simulation-metrics},
+  stitching all of it into the REST surface (\texttt{/users/\{id\}/nodes},
+  \texttt{/users/\{id\}/bills}, \texttt{/analytics/districts},
+  \texttt{/simulation-metrics/\{runId\}}) consumed by the dashboard.
+\item \textbf{Simulation Service} (:8086): a small Spring Boot service that lets the dashboard
+  start a simulation run with a button click instead of someone typing an \texttt{mpirun} command
+  by hand. It takes a scenario, a strategy, a district count and a process count, launches the
+  C++/MPI simulator as a background process with those settings, and hands back a run ID
+  immediately. The caller can then poll \texttt{GET /simulations/\{runId\}} to see whether the run
+  is still going, finished, or failed.
 \end{itemize}
 
 \begin{figure}[h]
@@ -80,8 +91,8 @@
 \caption{Publish/subscribe topology: every arrow is a Kafka topic, never a direct service call.
   Solid arrows are the REST-ingestion path; the dashed arrow shows the C++/MPI simulator
   publishing directly into \texttt{measurement-events} as an alternate, higher-volume producer.
-  A vanilla-JS dashboard (not shown) additionally polls Account Service, Node Manager and
-  Presentation Service directly over REST to render the UI.}
+  A vanilla-JS dashboard (not shown) additionally polls Account Service, Node Manager,
+  Presentation Service and Simulation Service directly over REST to render the UI.}
 \label{fig:arch}
 \end{figure}
 
@@ -91,3 +102,23 @@ topic(s) it consumes, and Kafka --- not any service's database --- is the durabl
 record. This makes Presentation Service a textbook CQRS query side: three independently owned
 write models (\texttt{node-events}, \texttt{billing-events}, \texttt{district-*-stats}) are
 joined only in the read projection, never in the write path.
+
+\subsection*{Starting a Simulation Run and Watching It Work}
+The simulator can also be started straight from the dashboard, not just from a terminal. This
+needed three small pieces to fit together:
+
+\begin{itemize}
+\item \textbf{Starting the run.} The dashboard sends the run settings (scenario, strategy,
+  district count, process count) to Simulation Service, which runs \texttt{mpirun} for you and
+  gives the run a unique ID. This ID is passed to the simulator through an environment variable, so
+  every rank of that run tags its output with it.
+\item \textbf{Reporting how the run is going.} While it runs, the C++ simulator measures its own
+  wall-clock time and CPU usage for every step, on every rank, and publishes these numbers to a new
+  Kafka topic called \texttt{simulation-metrics}. This is separate from
+  \texttt{measurement-events}: one topic carries readings about the power grid, the other carries
+  readings about how busy the simulation process itself is.
+\item \textbf{Reading the results.} Presentation Service listens to \texttt{simulation-metrics}
+  and keeps the events for each run ID in memory, exposed at
+  \texttt{GET /simulation-metrics/\{runId\}}. The dashboard polls this endpoint while a run is
+  active and draws the wall-clock time and CPU percentage per step as they arrive.
+\end{itemize}

@@ -30,6 +30,7 @@
         <module>billing-service</module>
         <module>presentation-service</module>
         <module>analytics-service</module>
+        <module>simulation-service</module>
     </modules>
 
     <dependencyManagement>

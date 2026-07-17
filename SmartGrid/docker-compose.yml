@@ -20,7 +20,7 @@ services:
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 15s
-      timeout: 10s
+      timeout: 40s
       retries: 10
       start_period: 30s
 
@@ -61,6 +61,7 @@ services:
       - "8083:8083"
     environment:
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SPRING_PROFILES_ACTIVE=simulator
     depends_on:
       - kafka
 
@@ -106,3 +107,15 @@ services:
       - ${HOME}/.m2/repository:/m2:ro
       - ./analytics-service/checkpoint:/opt/spark/work-dir/analytics_checkpoint
     command: ["/opt/spark/bin/spark-submit","--jars","/m2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.0/spark-sql-kafka-0-10_2.12-3.5.0.jar,/m2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.0/spark-token-provider-kafka-0-10_2.12-3.5.0.jar,/m2/org/apache/kafka/kafka-clients/3.8.1/kafka-clients-3.8.1.jar,/m2/org/apache/commons/commons-pool2/2.12.1/commons-pool2-2.12.1.jar","--class","com.smartgrid.analytics.AnalyticsEngine","/app/target/analytics-service-0.0.1-SNAPSHOT.jar"]
+
+  simulation-service:
+    build:
+      context: ..
+      dockerfile: SmartGrid/simulation-service/Dockerfile
+    container_name: simulation-service
+    ports:
+      - "8086:8086"
+    environment:
+      - SIMULATION_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    depends_on:
+      - kafka

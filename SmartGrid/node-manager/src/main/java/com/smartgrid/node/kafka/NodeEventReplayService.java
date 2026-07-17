@@ -8,6 +8,8 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +20,9 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 
@@ -58,24 +62,30 @@ public class NodeEventReplayService {
 
         int replayed = 0;
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            consumer.subscribe(Collections.singletonList(TOPIC));
+            // Manual partition assignment instead of subscribe(): replay is a one-shot read of
+            // the whole topic by a throwaway consumer, so there's no need for consumer-group
+            // rebalancing -- and subscribe() loses the race between "partition assigned" and
+            // "starting offset actually resolved", which can make poll() return empty results
+            // even after consumer.assignment() is non-empty, fooling an empty-poll-count
+            // heuristic into stopping before anything is ever read. Tracking real end offsets
+            // avoids that race entirely.
+            List<PartitionInfo> partitionInfos = consumer.partitionsFor(TOPIC);
+            List<TopicPartition> partitions = new ArrayList<>();
+            for (PartitionInfo pi : partitionInfos) {
+                partitions.add(new TopicPartition(pi.topic(), pi.partition()));
+            }
 
-            int emptyPolls = 0;
+            consumer.assign(partitions);
+            consumer.seekToBeginning(partitions);
+            Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
+
             int totalPolls = 0;
-            while (emptyPolls < 3 && totalPolls < 60) {
+            while (!caughtUp(consumer, partitions, endOffsets) && totalPolls < 60) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(2));
                 totalPolls++;
-                if (consumer.assignment().isEmpty()) {
-                    continue; // still rebalancing, don't count towards catch-up yet
-                }
-                if (records.isEmpty()) {
-                    emptyPolls++;
-                } else {
-                    emptyPolls = 0;
-                    for (ConsumerRecord<String, String> record : records) {
-                        applyEvent(record.value());
-                        replayed++;
-                    }
+                for (ConsumerRecord<String, String> record : records) {
+                    applyEvent(record.value());
+                    replayed++;
                 }
             }
         } catch (Exception e) {
@@ -84,6 +94,17 @@ public class NodeEventReplayService {
 
         log.info("✔ Node replay complete — {} event(s) applied, {} node(s) in store",
                  replayed, nodeRepository.count());
+    }
+
+    private boolean caughtUp(KafkaConsumer<String, String> consumer,
+                              List<TopicPartition> partitions,
+                              Map<TopicPartition, Long> endOffsets) {
+        for (TopicPartition tp : partitions) {
+            if (consumer.position(tp) < endOffsets.get(tp)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void applyEvent(String json) {

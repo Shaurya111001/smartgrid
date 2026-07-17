@@ -1,6 +1,12 @@
 #include <iostream>
 #include <string>
 #include <unordered_set>
+#include <chrono>
+#include <cstdlib>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <sys/resource.h>
 
 #include "domain/grid.hpp"
 #include "domain/district.hpp"
@@ -13,6 +19,29 @@
 #include "partition/partition_strategy.hpp"
 #include "kafka/event_publisher.hpp"
 #include "io/result_writer.hpp"
+
+namespace {
+
+// Total CPU time (user+system) consumed by this process so far. Diffing two
+// calls across an interval and comparing against that interval's wall-clock
+// time gives a CPU utilization percentage for that interval.
+double cpu_seconds() {
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+    return (usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6) +
+           (usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1e6);
+}
+
+std::string iso_timestamp() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm = *std::gmtime(&t);
+    std::ostringstream ts;
+    ts << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+    return ts.str();
+}
+
+}  // namespace
 
 // Usage: simulation_app [sparse|dense] [roundrobin|weighted|nodepartition] [district_count]
 //
@@ -76,6 +105,37 @@ int main(int argc, char** argv) {
         if (pub) pub->publish(topic, key, value);
     };
 
+    // Correlates every metric event from every rank of this run so a caller
+    // (e.g. simulation-service, which sets this env var when it launches
+    // mpirun) can query "just this run's" metrics. Falls back to a
+    // locally-generated id so manual/local invocations (e.g.
+    // test_kafka_spark_mpi.sh) keep working unchanged.
+    const char* run_id_env = std::getenv("SIMULATION_RUN_ID");
+    std::string run_id = (run_id_env != nullptr)
+        ? run_id_env
+        : ("local-" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
+
+    // Resource-usage telemetry for this run, published per rank per step --
+    // this is deliberately separate from publish_measurement()/"measurement-events"
+    // (grid energy readings): this topic reports how the *simulation itself* is
+    // using compute resources (wall-clock, CPU%), not simulated sensor data.
+    auto publish_step_metrics = [&](int step, double wall_clock_ms, double cpu_percent) {
+        if (!pub) return;
+        std::ostringstream j;
+        j << "{"
+            << "\"runId\":\"" << run_id << "\","
+            << "\"rank\":" << rank << ","
+            << "\"processes\":" << size << ","
+            << "\"scenario\":\"" << scenario << "\","
+            << "\"strategy\":\"" << strategy << "\","
+            << "\"step\":" << step << ","
+            << "\"stepWallClockMs\":" << wall_clock_ms << ","
+            << "\"cpuUtilizationPercent\":" << cpu_percent << ","
+            << "\"timestamp\":\"" << iso_timestamp() << "\""
+            << "}";
+        pub->publish("simulation-metrics", run_id, j.str());
+    };
+
     size_t districts_owned = 0;
     size_t nodes_owned = 0;
 
@@ -99,9 +159,19 @@ int main(int argc, char** argv) {
         auto is_owned = [&owned](Node* n) { return owned.count(n) > 0; };
 
         for (int step = 0; step < steps; step++) {
+            auto step_start = std::chrono::high_resolution_clock::now();
+            double cpu_start = cpu_seconds();
+
             for (auto d : grid.get_districts()) {
                 d->simulate_step_distributed(step, mpi_manager, is_owned);
             }
+
+            double wall_clock_ms = std::chrono::duration<double, std::milli>(
+                std::chrono::high_resolution_clock::now() - step_start).count();
+            double cpu_percent = wall_clock_ms > 0
+                ? 100.0 * (cpu_seconds() - cpu_start) * 1000.0 / wall_clock_ms
+                : 0.0;
+            publish_step_metrics(step, wall_clock_ms, cpu_percent);
         }
     } else {
         // District-level partitioning (roundrobin or weighted): whole districts are
@@ -127,9 +197,19 @@ int main(int argc, char** argv) {
         }
 
         for (int step = 0; step < steps; step++) {
+            auto step_start = std::chrono::high_resolution_clock::now();
+            double cpu_start = cpu_seconds();
+
             for (auto d : my_districts) {
                 d->simulate_step(step);
             }
+
+            double wall_clock_ms = std::chrono::duration<double, std::milli>(
+                std::chrono::high_resolution_clock::now() - step_start).count();
+            double cpu_percent = wall_clock_ms > 0
+                ? 100.0 * (cpu_seconds() - cpu_start) * 1000.0 / wall_clock_ms
+                : 0.0;
+            publish_step_metrics(step, wall_clock_ms, cpu_percent);
         }
     }
 

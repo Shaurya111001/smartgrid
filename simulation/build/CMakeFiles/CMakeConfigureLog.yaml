@@ -304,3 +304,76 @@ events:
         
       exitCode: 0
 ...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/opt/homebrew/share/cmake/Modules/FindMPI.cmake:1286 (try_compile)"
+      - "/opt/homebrew/share/cmake/Modules/FindMPI.cmake:1330 (_MPI_try_staged_settings)"
+      - "/opt/homebrew/share/cmake/Modules/FindMPI.cmake:1653 (_MPI_check_lang_works)"
+      - "CMakeLists.txt:27 (find_package)"
+    description: "The MPI test test_mpi for CXX in mode normal"
+    directories:
+      source: "/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-t34uzy"
+      binary: "/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-t34uzy"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "MPI_RESULT_CXX_test_mpi_normal"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-t34uzy'
+        
+        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /opt/homebrew/bin/gmake -f Makefile cmTC_5a836/fast
+        /opt/homebrew/bin/gmake  -f CMakeFiles/cmTC_5a836.dir/build.make CMakeFiles/cmTC_5a836.dir/build
+        gmake[1]: Entering directory '/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-t34uzy'
+        Building CXX object CMakeFiles/cmTC_5a836.dir/test_mpi.cpp.o
+        /usr/bin/c++  -isystem /opt/homebrew/Cellar/open-mpi/5.0.9/include -std=c++17 -arch arm64 -MD -MT CMakeFiles/cmTC_5a836.dir/test_mpi.cpp.o -MF CMakeFiles/cmTC_5a836.dir/test_mpi.cpp.o.d -o CMakeFiles/cmTC_5a836.dir/test_mpi.cpp.o -c /Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-t34uzy/test_mpi.cpp
+        Linking CXX executable cmTC_5a836
+        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5a836.dir/link.txt --verbose=1
+        /usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/cmTC_5a836.dir/test_mpi.cpp.o -o cmTC_5a836  /opt/homebrew/Cellar/open-mpi/5.0.9/lib/libmpi.dylib
+        gmake[1]: Leaving directory '/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-t34uzy'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/opt/homebrew/share/cmake/Modules/FindMPI.cmake:1286 (try_compile)"
+      - "/opt/homebrew/share/cmake/Modules/FindMPI.cmake:1680 (_MPI_try_staged_settings)"
+      - "CMakeLists.txt:27 (find_package)"
+    description: "The MPI test test_mpi for CXX in mode MPICXX"
+    directories:
+      source: "/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-ZUewOH"
+      binary: "/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-ZUewOH"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "MPI_RESULT_CXX_test_mpi_MPICXX"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-ZUewOH'
+        
+        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /opt/homebrew/bin/gmake -f Makefile cmTC_83f40/fast
+        /opt/homebrew/bin/gmake  -f CMakeFiles/cmTC_83f40.dir/build.make CMakeFiles/cmTC_83f40.dir/build
+        gmake[1]: Entering directory '/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-ZUewOH'
+        Building CXX object CMakeFiles/cmTC_83f40.dir/test_mpi.cpp.o
+        /usr/bin/c++  -isystem /opt/homebrew/Cellar/open-mpi/5.0.9/include -std=c++17 -arch arm64 -MD -MT CMakeFiles/cmTC_83f40.dir/test_mpi.cpp.o -MF CMakeFiles/cmTC_83f40.dir/test_mpi.cpp.o.d -o CMakeFiles/cmTC_83f40.dir/test_mpi.cpp.o -c /Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-ZUewOH/test_mpi.cpp
+        Linking CXX executable cmTC_83f40
+        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_83f40.dir/link.txt --verbose=1
+        /usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/cmTC_83f40.dir/test_mpi.cpp.o -o cmTC_83f40  /opt/homebrew/Cellar/open-mpi/5.0.9/lib/libmpi.dylib
+        gmake[1]: Leaving directory '/Users/vivek/Documents/GitHub/MUTI/smartgrid_Shaurya/simulation/build/CMakeFiles/CMakeScratch/TryCompile-ZUewOH'
+        
+      exitCode: 0
+...

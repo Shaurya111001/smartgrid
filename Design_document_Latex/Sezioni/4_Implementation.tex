@@ -7,23 +7,29 @@
   producer/consumer components, with no shared library beyond the event JSON shapes documented in
   \texttt{kafka-topics.md}.
 \item \textbf{Messaging:} Apache Kafka 7.6 in \textbf{KRaft} mode (self-managed metadata quorum,
-  no ZooKeeper), a single broker/controller node for this deployment, six topics in total
+  no ZooKeeper), a single broker/controller node for this deployment, seven topics in total
   (\texttt{user-}, \texttt{node-}, \texttt{measurement-}, \texttt{billing-events},
-  \texttt{district-window-stats}, \texttt{district-soc-state}).
-\item \textbf{Analytics:} Apache Spark~3.5 Structured Streaming (Java~17), submitted as a plain
-  \texttt{spark-submit} job rather than a Spring service, reading and writing Kafka directly via
-  the \texttt{spark-sql-kafka-0-10} connector.
-\item \textbf{Load simulation:} a standalone C++17/CMake project (\texttt{simulation/}) that
-  models grid districts of producer/consumer/accumulator nodes; \textbf{MPI} is used purely to
-  \emph{statically partition districts across ranks} (round-robin,
-  \texttt{PartitionStrategy::district\_partition}) so each rank simulates an independent subset in
-  parallel --- not for inter-rank communication --- with a no-MPI single-process stub as an
-  automatic CMake fallback. When built with \texttt{librdkafka}, it can publish directly to
-  \texttt{measurement-events}, standing in for the REST ingestion path at much higher volume.
-\item \textbf{Deployment:} Docker Compose orchestrates all seven containers (Kafka $+$ five
-  Spring services $+$ the Spark job); a dependency-free vanilla-JS dashboard
-  (\texttt{frontend/index.html}) talks directly to Account Service, Node Manager and Presentation
-  Service over REST for the UI.
+  \texttt{district-window-stats}, \texttt{district-soc-state}, \texttt{simulation-metrics}).
+\item \textbf{Analytics:} Apache Spark 3.5 Structured Streaming, written in Java 17 and submitted
+  as a plain \texttt{spark-submit} job rather than a Spring service. It reads from and writes to
+  Kafka directly, through the \texttt{spark-sql-kafka-0-10} connector.
+\item \textbf{Load simulation:} a standalone C++17/CMake project (\texttt{simulation/}) modeling
+  grid districts of producer/consumer/accumulator nodes (no-MPI stub as fallback); with
+  \texttt{librdkafka} it publishes directly to \texttt{measurement-events} at higher volume than
+  the REST path. Three runtime-selectable strategies satisfy the assignment's dense/sparse
+  comparison: \emph{round-robin} and \emph{weighted} (load-balanced by node count) assign
+  \emph{whole districts} per rank --- zero inter-rank communication. \emph{Node-partition} splits
+  \emph{individual nodes} across ranks instead: each rank sums only its own nodes, then
+  \texttt{MPI\_Allreduce} combines all partial sums into the true district balance --- real,
+  measurable communication overhead versus the other two strategies' zero baseline. Results are
+  tagged by (scenario, strategy, process count) for direct comparison.
+\item \textbf{Deployment:} Docker Compose orchestrates all eight containers (Kafka $+$ six Spring
+  services $+$ the Spark job); a dependency-free vanilla-JS dashboard
+  (\texttt{frontend/index.html}) talks directly to Account Service, Node Manager, Presentation
+  Service and Simulation Service over REST. Two screens were added to the dashboard alongside the
+  original node/billing views: an Analytics screen showing live district stats, and a Simulation
+  screen where a user picks a scenario, strategy, district count and process count, starts a run,
+  and watches its per-step wall-clock time and CPU usage arrive while it's still running.
 \end{itemize}
 
 \subsection*{Verification}
@@ -34,17 +40,19 @@ level:
   submits a measurement, confirming at each step that the downstream service correctly consumed
   the upstream event --- e.g. Node Manager accepting the node \emph{because} it had already
   replayed the matching \texttt{UserRegistered} event.
-\item \textbf{Fault recovery:} Account Service was killed and restarted mid-test, after several
-  users had been registered; all users were confirmed present again after replay, validating that
-  restart-safety holds under a real process kill, not just a clean shutdown.
-\item \textbf{Streaming analytics:} the Spark job was confirmed to consume live
-  \texttt{measurement-events} and produce correctly-shaped output on \texttt{district-soc-state},
-  observed directly via a Kafka console consumer.
+\item \textbf{Fault recovery:} all eight replay/cache routines across all five services were
+  killed and restarted mid-test after real data had been produced, and each fully recovered its
+  state from Kafka alone.
+\item \textbf{Streaming analytics:} we confirmed that the Spark job consumes live
+  \texttt{measurement-events} correctly and produces well-formed, bounded output on
+  \texttt{district-soc-state}.
+\item \textbf{Distributed simulation correctness:} for \emph{node-partition}, the
+  \texttt{MPI\_Allreduce}-combined balance matched an independent manual sum of every rank's
+  recorded per-node deltas to floating-point precision.
 \end{itemize}
 
 \subsection*{Conclusion}
 By making Kafka the single, durable source of truth and requiring every service to derive its
 state purely by replaying topics it does not own, the system achieves independent deployability,
 zero-persistent-storage restart safety, and a clean separation between transactional services,
-streaming analytics, and load generation --- without any component needing to know about the
-internals of another.
+streaming analytics, and load generation.

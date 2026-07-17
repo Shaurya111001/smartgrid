@@ -1,6 +1,6 @@
 \section{Event Sourcing, Choreography, and Fault Recovery}
 
-\subsection*{Replay-Then-Listen: One Pattern, Every Service}
+\subsection*{Every Service Rebuilds Its State on Startup}
 Every stateful component in the system --- Account Service's \texttt{User} store, Node Manager's
 cache of \texttt{user-events}, Measurement Service's and Billing Service's caches of
 \texttt{node-events}, Billing Service's accumulator over \texttt{measurement-events}, and
@@ -12,20 +12,34 @@ the beginning into the in-memory store, and only then does the service register 
 \textbf{restart-safe with zero persistent storage}: a service's entire state is, by construction,
 nothing more than a cached fold over its topic(s).
 
-\subsection*{A Subtlety in ``Caught Up'' Detection}
+\subsection*{Knowing When Replay Has Finished}
 The replay loop must decide \emph{when} it has drained the topic's backlog, since Kafka never
-signals end-of-log explicitly. The natural heuristic --- stop after $N$ consecutive empty
-\texttt{poll()} calls --- has a race condition: the very first polls of a fresh, uniquely-named
-consumer group return empty \emph{because the group is still rebalancing and has not yet been
-assigned a partition}, not because the topic is empty. If those rebalance-time empty polls are
-counted toward the threshold, the loop can conclude ``caught up'' at the exact moment partitions
-are finally assigned --- before a single historical record has been read --- silently replaying
-zero events on an otherwise healthy restart. The fix is to gate the empty-poll counter on
-\texttt{consumer.assignment()} being non-empty, so only genuine post-assignment empty polls count
-toward completion. This is the kind of correctness detail that a unit test over a mocked consumer
-will not catch, but a real kill-and-restart integration test will.
+signals end-of-log explicitly. The first version of this loop stopped after a few consecutive
+empty \texttt{poll()} calls, only counting polls made after \texttt{consumer.assignment()} was
+non-empty, so early, still-rebalancing empty polls would not be mistaken for an empty topic. This
+is the kind of correctness detail that a unit test over a mocked consumer will not catch, but a
+real kill-and-restart integration test will: every one of the eight replay routines in the system
+(one per cache) hit this exact race on a live restart before that fix, recovering zero records
+despite a healthy topic.
 
-\subsection*{Choreography Over Orchestration}
+That fix still leaves a narrower version of the same problem: even after a partition is assigned,
+\texttt{poll()} can return empty a few times before the consumer's starting offset is actually
+resolved, so counting empty polls is still only an approximation of ``done'', never an exact one.
+To remove the guesswork entirely, the replay consumer now assigns itself the topic's partitions
+directly (instead of subscribing and waiting for a group assignment), seeks to the beginning, and
+reads each partition's current end offset up front. The loop then simply keeps polling until its
+position on every partition has reached that end offset --- an exact stopping condition instead of
+a guess based on empty polls.
+
+\subsection*{Every Publish Waits for Kafka to Confirm}
+Every producer blocks on the \texttt{Future} returned by \texttt{KafkaTemplate.send(...)} and logs
+the resulting topic-partition-offset, instead of firing-and-forgetting it: a fire-and-forget
+publish can return \texttt{201 Created} before Kafka has durably accepted the write, silently
+diverging the caller's belief from the durable log until a later replay quietly comes up short.
+Controllers also publish \emph{before} committing to their own in-memory store, so a publish
+failure never leaves the two disagreeing.
+
+\subsection*{No Central Coordinator}
 No component acts as a saga coordinator or orchestrator: cross-service consistency emerges purely
 from independent replay of shared topics. The clearest example is Node Manager validating a
 node's \texttt{userId}: rather than issuing a synchronous \texttt{GET} to Account Service, which
@@ -35,7 +49,16 @@ own continuously-updated \texttt{user-events} projection. The trade-off is expli
 lags, so validation is eventually, rather than immediately, consistent --- an acceptable cost
 given the system's read-heavy, analytics-oriented workload.
 
-\subsection*{Time-Triggered Aggregation in Billing Service}
+\subsection*{Two Topics, Two Separate Caches}
+Presentation Service's analytics cache used to be a single map, keyed by district, that both
+\texttt{district-window-stats} and \texttt{district-soc-state} wrote into. That was a bug: each
+topic's message only carries its own fields, so whichever topic happened to publish last for a
+district would silently wipe out the other topic's fields for that same entry. The fix is simple
+--- keep two separate maps, one per topic, and only combine them into a single object when a read
+request comes in. Neither topic can step on the other any more, no matter which one is more
+active at a given moment.
+
+\subsection*{Billing Service: Collect Continuously, Send Every Minute}
 Billing Service deliberately mixes two consistency models: it accumulates usage
 \emph{continuously} from the live \texttt{@KafkaListener} on \texttt{measurement-events}, but only
 \emph{emits} the resulting \texttt{billing-events} on a fixed 60-second \texttt{@Scheduled}
