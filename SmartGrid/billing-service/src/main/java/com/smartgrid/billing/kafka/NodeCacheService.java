@@ -26,11 +26,6 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Replays node-events on startup to build a nodeId → userId lookup.
- * The billing service needs this because measurement-events carry
- * nodeId but billing is per-user.
- */
 @Service
 public class NodeCacheService {
 
@@ -47,7 +42,6 @@ public class NodeCacheService {
         this.objectMapper = objectMapper;
     }
 
-    /** Returns the userId that owns this node, or null if unknown. */
     public String getUserIdForNode(String nodeId) {
         return nodeToUser.get(nodeId);
     }
@@ -67,13 +61,6 @@ public class NodeCacheService {
 
         int replayed = 0;
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            // Manual partition assignment instead of subscribe(): replay is a one-shot read of
-            // the whole topic by a throwaway consumer, so there's no need for consumer-group
-            // rebalancing -- and subscribe() loses the race between "partition assigned" and
-            // "starting offset actually resolved", which can make poll() return empty results
-            // even after consumer.assignment() is non-empty, fooling an empty-poll-count
-            // heuristic into stopping before anything is ever read. Tracking real end offsets
-            // avoids that race entirely.
             List<PartitionInfo> partitionInfos = consumer.partitionsFor(TOPIC);
             List<TopicPartition> partitions = new ArrayList<>();
             for (PartitionInfo pi : partitionInfos) {

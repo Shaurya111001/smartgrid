@@ -8,10 +8,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * In-memory user store backed by a ConcurrentHashMap.
- * Rebuilt on startup by replaying the user-events Kafka topic.
- */
 @Repository
 public class UserRepository {
 

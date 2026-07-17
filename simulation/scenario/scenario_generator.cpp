@@ -14,7 +14,6 @@ Grid ScenarioGenerator::generate_sparse_grid(int district_count) {
 
         District* d = new District(i + 1);
 
-        // few nodes
         for (int p = 0; p < 3; p++)
             d->add_node(new Producer(node_id++, i + 1, 100));
 
@@ -30,7 +29,6 @@ Grid ScenarioGenerator::generate_sparse_grid(int district_count) {
     return grid;
 }
 
-
 Grid ScenarioGenerator::generate_dense_grid(int district_count) {
 
     Grid grid;
@@ -41,7 +39,6 @@ Grid ScenarioGenerator::generate_dense_grid(int district_count) {
 
         District* d = new District(i + 1);
 
-        // many nodes
         for (int p = 0; p < 300; p++)
             d->add_node(new Producer(node_id++, i + 1, 100));
 

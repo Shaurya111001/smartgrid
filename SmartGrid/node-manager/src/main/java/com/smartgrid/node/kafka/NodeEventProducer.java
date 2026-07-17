@@ -28,10 +28,6 @@ public class NodeEventProducer {
         this.objectMapper  = objectMapper;
     }
 
-    /**
-     * Publishes synchronously: blocks until the broker acknowledges the write, so callers only
-     * treat the underlying node mutation as successful once the event is actually durable.
-     */
     public void publish(NodeEvent event) {
         String json;
         try {

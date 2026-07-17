@@ -23,18 +23,13 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Replays node-events on startup → builds Map<userId, List<NodeView>>.
- */
 @Service
 public class NodeCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(NodeCacheService.class);
     private static final String TOPIC = "node-events";
 
-    /** userId → list of nodes belonging to that user */
     private final Map<String, List<NodeView>> userNodes = new ConcurrentHashMap<>();
-    /** nodeId → NodeView for quick lookup on updates/deletes */
     private final Map<String, NodeView> nodeIndex = new ConcurrentHashMap<>();
 
     private final ObjectMapper objectMapper;
@@ -65,13 +60,6 @@ public class NodeCacheService {
 
         int replayed = 0;
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            // Manual partition assignment instead of subscribe(): replay is a one-shot read of
-            // the whole topic by a throwaway consumer, so there's no need for consumer-group
-            // rebalancing -- and subscribe() loses the race between "partition assigned" and
-            // "starting offset actually resolved", which can make poll() return empty results
-            // even after consumer.assignment() is non-empty, fooling an empty-poll-count
-            // heuristic into stopping before anything is ever read. Tracking real end offsets
-            // avoids that race entirely.
             List<PartitionInfo> partitionInfos = consumer.partitionsFor(TOPIC);
             List<TopicPartition> partitions = new ArrayList<>();
             for (PartitionInfo pi : partitionInfos) {
@@ -131,7 +119,6 @@ public class NodeCacheService {
                     userNodes.computeIfAbsent(userId, k -> Collections.synchronizedList(new ArrayList<>())).add(nv);
                 }
                 case "NodeUpdated" -> {
-                    // Remove old, add updated
                     NodeView old = nodeIndex.get(nodeId);
                     if (old != null) {
                         List<NodeView> list = userNodes.get(old.getUserId());

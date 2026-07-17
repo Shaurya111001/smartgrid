@@ -4,11 +4,11 @@ import java.time.Instant;
 
 public class NodeEvent {
 
-    private String  eventType;   // NodeCreated | NodeUpdated | NodeDeleted
+    private String  eventType;
     private String  nodeId;
     private String  userId;
     private String  districtId;
-    private String  type;        // PRODUCER | CONSUMER
+    private String  type;
     private Instant timestamp;
 
     public NodeEvent() {}

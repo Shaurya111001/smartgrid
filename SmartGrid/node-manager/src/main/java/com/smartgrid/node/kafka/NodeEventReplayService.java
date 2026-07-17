@@ -26,10 +26,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 
-/**
- * On startup, replays the entire node-events topic from the beginning
- * to rebuild the in-memory NodeRepository.
- */
 @Service
 public class NodeEventReplayService {
 
@@ -48,7 +44,7 @@ public class NodeEventReplayService {
     }
 
     @EventListener(ApplicationReadyEvent.class)
-    @Order(2)  // Run after UserCacheService (default order)
+    @Order(2)
     public void replayOnStartup() {
         log.info("▶ Starting node-events replay from beginning...");
 
@@ -62,13 +58,6 @@ public class NodeEventReplayService {
 
         int replayed = 0;
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            // Manual partition assignment instead of subscribe(): replay is a one-shot read of
-            // the whole topic by a throwaway consumer, so there's no need for consumer-group
-            // rebalancing -- and subscribe() loses the race between "partition assigned" and
-            // "starting offset actually resolved", which can make poll() return empty results
-            // even after consumer.assignment() is non-empty, fooling an empty-poll-count
-            // heuristic into stopping before anything is ever read. Tracking real end offsets
-            // avoids that race entirely.
             List<PartitionInfo> partitionInfos = consumer.partitionsFor(TOPIC);
             List<TopicPartition> partitions = new ArrayList<>();
             for (PartitionInfo pi : partitionInfos) {

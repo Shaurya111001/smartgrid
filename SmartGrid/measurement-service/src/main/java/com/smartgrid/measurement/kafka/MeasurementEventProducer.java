@@ -29,10 +29,6 @@ public class MeasurementEventProducer {
         this.objectMapper  = objectMapper;
     }
 
-    /**
-     * Publishes synchronously: blocks until the broker acknowledges the write, so the REST
-     * caller only gets 201 once the measurement is actually durable in Kafka.
-     */
     public void publish(MeasurementEvent event) {
         String json;
         try {
@@ -43,7 +39,6 @@ public class MeasurementEventProducer {
         }
 
         try {
-            // Use districtId as key so records are partitioned by district (keeps per-district order)
             SendResult<String, String> result =
                     kafkaTemplate.send(TOPIC, event.getDistrictId(), json).get(5, TimeUnit.SECONDS);
             var meta = result.getRecordMetadata();

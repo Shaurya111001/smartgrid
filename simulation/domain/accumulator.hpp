@@ -17,9 +17,6 @@ public:
 
     double compute_energy() override;
 
-    /** Applies district_balance to the charge (clamped to [0, capacity]) and
-     *  returns the actual delta applied post-clamp, i.e. what this accumulator
-     *  really absorbed (positive) or released (negative) this step. */
     double update_charge(double district_balance);
 
     double get_charge() const;

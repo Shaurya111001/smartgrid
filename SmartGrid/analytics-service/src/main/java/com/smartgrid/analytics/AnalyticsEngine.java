@@ -27,8 +27,6 @@ public class AnalyticsEngine {
             .master(System.getenv().getOrDefault("SPARK_MASTER", "local[*]"))
             .getOrCreate();
 
-        // Confirmed, per-microbatch outcome logging: without this the only way to tell
-        // whether a query is actually processing anything is to tail its output topic.
         spark.streams().addListener(new StreamingQueryListener() {
             @Override
             public void onQueryStarted(QueryStartedEvent event) {
@@ -48,7 +46,6 @@ public class AnalyticsEngine {
             }
         });
 
-        // Schema matching MeasurementEvent emitted by Measurement Service
         StructType schema = new StructType()
                 .add("eventType", DataTypes.StringType)
                 .add("nodeId", DataTypes.StringType)
@@ -67,20 +64,8 @@ public class AnalyticsEngine {
                 .selectExpr("CAST(value AS STRING) as json")
                 .select(from_json(col("json"), schema).as("data"))
                 .select("data.*")
-                // convert ISO-8601 string timestamp to actual timestamp type for event-time
                 .withColumn("ts", to_timestamp(col("timestamp")));
 
-        // adjusted_value: raw producer/consumer supply-demand imbalance (producers
-        // positive, consumers negative). Accumulators don't self-generate, so they
-        // don't contribute here -- this column feeds the *window* stats, which are
-        // meant to track the raw production/consumption trend the accumulators exist
-        // to smooth out, not the accumulators' own state.
-        //
-        // soc_delta: the accumulator's own applied (post-clamp) charge delta for this
-        // reading -- positive when absorbing, negative when releasing, 0 for
-        // producer/consumer rows. The simulator publishes this pre-clamped-and-applied
-        // (see simulation/domain/district.cpp), so summing it cumulatively reconstructs
-        // the true bounded state of charge, not a synthetic stand-in for it.
         Dataset<Row> adjusted = parsed
                 .withColumn("adjusted_value",
                         expr("CASE WHEN type = 'producer' THEN energyValue WHEN type = 'consumer' THEN -energyValue ELSE 0 END"))
@@ -88,9 +73,6 @@ public class AnalyticsEngine {
                         expr("CASE WHEN type = 'accumulator' THEN energyValue ELSE 0 END"))
                 .withWatermark("ts", "5 minutes");
 
-        // Windowed aggregate: AVERAGE district energy balance per window (per spec:
-        // "compute the average district energy balance over a configurable sliding
-        // time window").
         Dataset<Row> windowed = adjusted
                 .groupBy(
                         org.apache.spark.sql.functions.window(col("ts"), System.getenv().getOrDefault("WINDOW_DURATION", "10 minutes"), System.getenv().getOrDefault("WINDOW_SLIDE", "5 minutes")),
@@ -107,9 +89,6 @@ public class AnalyticsEngine {
                 .option("checkpointLocation", System.getenv().getOrDefault("CHECKPOINT_DIR", "analytics_checkpoint") + "/windowed")
                 .start();
 
-        // State of charge per district: cumulative sum of accumulators' own applied
-        // deltas since job start. Bounded because each individual delta was already
-        // clamped to [0, capacity] at the source.
         Dataset<Row> soc = adjusted
                 .groupBy(col("districtId"))
                 .agg(org.apache.spark.sql.functions.sum("soc_delta").as("current_SOC"));

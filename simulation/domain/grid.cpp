@@ -7,7 +7,6 @@ void Grid::add_district(District* district) {
     districts.push_back(district);
 }
 
-
 std::vector<District*>& Grid::get_districts() {
     return districts;
 }

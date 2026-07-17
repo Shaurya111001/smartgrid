@@ -25,18 +25,12 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Replays the node-events topic on startup to build a local cache
- * of nodeId → (districtId, type). This lets the measurement service
- * enrich sensor readings without calling the node-manager directly.
- */
 @Service
 public class NodeCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(NodeCacheService.class);
     private static final String TOPIC = "node-events";
 
-    /** nodeId → {districtId, type} */
     private final Map<String, NodeInfo> cache = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
@@ -73,13 +67,6 @@ public class NodeCacheService {
 
         int replayed = 0;
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            // Manual partition assignment instead of subscribe(): replay is a one-shot read of
-            // the whole topic by a throwaway consumer, so there's no need for consumer-group
-            // rebalancing -- and subscribe() loses the race between "partition assigned" and
-            // "starting offset actually resolved", which can make poll() return empty results
-            // even after consumer.assignment() is non-empty, fooling an empty-poll-count
-            // heuristic into stopping before anything is ever read. Tracking real end offsets
-            // avoids that race entirely.
             List<PartitionInfo> partitionInfos = consumer.partitionsFor(TOPIC);
             List<TopicPartition> partitions = new ArrayList<>();
             for (PartitionInfo pi : partitionInfos) {
@@ -143,6 +130,5 @@ public class NodeCacheService {
         }
     }
 
-    /** Simple record holding the node metadata we care about. */
     public record NodeInfo(String districtId, String type) {}
 }

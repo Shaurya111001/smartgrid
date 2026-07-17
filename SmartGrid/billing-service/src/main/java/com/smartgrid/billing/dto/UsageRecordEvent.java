@@ -4,7 +4,7 @@ import java.time.Instant;
 
 public class UsageRecordEvent {
 
-    private String  eventType;       // UsageRecordCreated
+    private String  eventType;
     private String  userId;
     private double  totalUsageKwh;
     private double  cost;

@@ -25,11 +25,6 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Replays measurement-events on startup to rebuild the per-user
- * accumulated usage map. Also listens to new events in real-time
- * via Spring Kafka @KafkaListener (configured in MeasurementConsumer).
- */
 @Service
 public class MeasurementReplayService {
 
@@ -52,10 +47,6 @@ public class MeasurementReplayService {
         return userUsage;
     }
 
-    /**
-     * Accumulate usage for a given nodeId.
-     * Resolves nodeId → userId via the node cache.
-     */
     public void accumulate(String nodeId, double energyValue) {
         String userId = nodeCacheService.getUserIdForNode(nodeId);
         if (userId != null) {
@@ -65,24 +56,18 @@ public class MeasurementReplayService {
         }
     }
 
-    /** Drain the accumulated usage map and return a snapshot. */
     public Map<String, Double> drainUsage() {
         Map<String, Double> snapshot = new ConcurrentHashMap<>(userUsage);
         userUsage.clear();
         return snapshot;
     }
 
-    /**
-     * Re-merges a previously drained amount back into the accumulator. Used when a
-     * billing-events publish fails after drainUsage() already removed it, so a transient
-     * Kafka error doesn't permanently drop that usage from the next billing cycle.
-     */
     public void restoreUsage(String userId, double kwh) {
         userUsage.merge(userId, kwh, Double::sum);
     }
 
     @EventListener(ApplicationReadyEvent.class)
-    @Order(2)  // After NodeCacheService
+    @Order(2)
     public void replayOnStartup() {
         log.info("▶ Replaying measurement-events to rebuild usage map...");
 
@@ -96,13 +81,6 @@ public class MeasurementReplayService {
 
         int replayed = 0;
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            // Manual partition assignment instead of subscribe(): replay is a one-shot read of
-            // the whole topic by a throwaway consumer, so there's no need for consumer-group
-            // rebalancing -- and subscribe() loses the race between "partition assigned" and
-            // "starting offset actually resolved", which can make poll() return empty results
-            // even after consumer.assignment() is non-empty, fooling an empty-poll-count
-            // heuristic into stopping before anything is ever read. Tracking real end offsets
-            // avoids that race entirely.
             List<PartitionInfo> partitionInfos = consumer.partitionsFor(TOPIC);
             List<TopicPartition> partitions = new ArrayList<>();
             for (PartitionInfo pi : partitionInfos) {

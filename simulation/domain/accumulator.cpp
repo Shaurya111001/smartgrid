@@ -10,8 +10,6 @@ Accumulator::Accumulator(uint32_t node_id,
 
 double Accumulator::compute_energy() {
 
-    // Accumulators don't produce random energy
-    // They respond to district balance
     return 0.0;
 }
 

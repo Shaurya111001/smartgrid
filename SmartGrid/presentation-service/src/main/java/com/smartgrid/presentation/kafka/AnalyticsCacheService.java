@@ -18,18 +18,12 @@ public class AnalyticsCacheService {
     private static final Logger log = LoggerFactory.getLogger(AnalyticsCacheService.class);
     private final ObjectMapper objectMapper;
 
-    // topic to listen for windowed analytics (optional override)
     @Value("${analytics.topic.window:district-window-stats}")
     private String windowTopic;
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
-    // districtId -> last known windowed-stats JSON as Map, and separately the
-    // last known SOC JSON as Map. Kept apart (rather than one map both topics
-    // write into) because each topic's event only carries its own fields --
-    // merging into a single map on write would let whichever topic's message
-    // landed last silently erase the other's fields for that district.
     private final Map<String, Map<String, Object>> windowCache = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Object>> socCache = new ConcurrentHashMap<>();
 

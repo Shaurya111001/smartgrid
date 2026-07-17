@@ -13,11 +13,10 @@ public class DataSimulator {
 
         try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
             String topic = "energy-measurement";
-            // Let's send 10 random events to see the math happen
         for (int i = 0; i < 10; i++) {
             String type = (i % 2 == 0) ? "producer" : "consumer";
-            double value = (Math.random() * 50) + 10; // Random energy value
-            
+            double value = (Math.random() * 50) + 10;
+
             String event = String.format(
                 "{\"nodeId\": \"node_%d\", \"type\": \"%s\", \"districtId\": \"district_A\", \"value\": %.2f, \"timestamp\": \"%s\"}",
                 i, type, value, java.time.Instant.now()
@@ -25,10 +24,10 @@ public class DataSimulator {
 
             producer.send(new ProducerRecord<>(topic, "district_A", event));
             System.out.println("Pushed to Kafka: " + event);
-            
-            Thread.sleep(2000); // Wait 2 seconds between events
+
+            Thread.sleep(2000);
         }
         }
     }
-    
+
 }

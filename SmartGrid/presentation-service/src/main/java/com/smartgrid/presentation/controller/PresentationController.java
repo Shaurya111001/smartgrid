@@ -26,13 +26,11 @@ public class PresentationController {
         this.billingCacheService = billingCacheService;
     }
 
-    // ──── GET /users/{id}/nodes ───────────────────────────────────────
     @GetMapping("/{id}/nodes")
     public ResponseEntity<List<NodeView>> getUserNodes(@PathVariable("id") String userId) {
         return ResponseEntity.ok(nodeCacheService.getNodesForUser(userId));
     }
 
-    // ──── GET /users/{id}/bills ───────────────────────────────────────
     @GetMapping("/{id}/bills")
     public ResponseEntity<List<UsageRecord>> getUserBills(@PathVariable("id") String userId) {
         return ResponseEntity.ok(billingCacheService.getBillsForUser(userId));

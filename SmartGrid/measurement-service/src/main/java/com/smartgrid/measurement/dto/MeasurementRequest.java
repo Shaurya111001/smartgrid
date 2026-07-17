@@ -1,10 +1,5 @@
 package com.smartgrid.measurement.dto;
 
-/**
- * Incoming request body for POST /measurements.
- * The client sends nodeId + energyValue; districtId and type
- * are resolved from the node cache.
- */
 public class MeasurementRequest {
 
     private String nodeId;

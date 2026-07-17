@@ -33,11 +33,9 @@ public class NodeController {
         this.userCacheService  = userCacheService;
     }
 
-    // ──── POST /nodes ─────────────────────────────────────────────────
     @PostMapping
     public ResponseEntity<?> create(@RequestBody Node request) {
 
-        // Validate that the user exists
         if (!userCacheService.userExists(request.getUserId())) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "User not found: " + request.getUserId()));
@@ -46,8 +44,6 @@ public class NodeController {
         String nodeId = "n_" + UUID.randomUUID().toString().substring(0, 8);
         Node node = new Node(nodeId, request.getUserId(), request.getDistrictId(), request.getType());
 
-        // Publish first: only commit to the local store once Kafka has actually
-        // acknowledged the event, so the two can never diverge on a publish failure.
         NodeEvent event = new NodeEvent("NodeCreated", nodeId,
                 node.getUserId(), node.getDistrictId(), node.getType());
         nodeEventProducer.publish(event);
@@ -58,7 +54,6 @@ public class NodeController {
         return ResponseEntity.status(HttpStatus.CREATED).body(node);
     }
 
-    // ──── PUT /nodes/{id} ─────────────────────────────────────────────
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable("id") String id,
                                     @RequestBody Node request) {
@@ -79,7 +74,6 @@ public class NodeController {
         return ResponseEntity.ok(node);
     }
 
-    // ──── DELETE /nodes/{id} ──────────────────────────────────────────
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable("id") String id) {
         if (!nodeRepository.existsById(id)) {
@@ -96,13 +90,11 @@ public class NodeController {
         return ResponseEntity.ok(Map.of("message", "Node deleted", "nodeId", id));
     }
 
-    // ──── GET /nodes (convenience) ────────────────────────────────────
     @GetMapping
     public ResponseEntity<Collection<Node>> listAll() {
         return ResponseEntity.ok(nodeRepository.findAll());
     }
 
-    // ──── GET /nodes/{id} (convenience) ───────────────────────────────
     @GetMapping("/{id}")
     public ResponseEntity<?> getById(@PathVariable("id") String id) {
         return nodeRepository.findById(id)

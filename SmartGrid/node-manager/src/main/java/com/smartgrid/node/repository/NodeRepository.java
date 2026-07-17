@@ -8,10 +8,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * In-memory node store backed by a ConcurrentHashMap.
- * Rebuilt on startup by replaying the node-events Kafka topic.
- */
 @Repository
 public class NodeRepository {
 

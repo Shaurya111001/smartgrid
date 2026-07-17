@@ -7,10 +7,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
-/**
- * Real-time Kafka consumer – listens to new measurement-events
- * and delegates to MeasurementReplayService for accumulation.
- */
 @Service
 public class MeasurementConsumer {
 

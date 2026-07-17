@@ -5,7 +5,7 @@ public class Node {
     private String nodeId;
     private String userId;
     private String districtId;
-    private String type;        // PRODUCER or CONSUMER
+    private String type;
 
     public Node() {}
 

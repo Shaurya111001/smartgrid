@@ -25,10 +25,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 
-/**
- * On application startup, replays the entire user-events topic
- * from the beginning and rebuilds the in-memory UserRepository.
- */
 @Service
 public class UserEventReplayService {
 
@@ -52,7 +48,6 @@ public class UserEventReplayService {
 
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,  bootstrapServers);
-        // Unique group so we always read from the very beginning
         props.put(ConsumerConfig.GROUP_ID_CONFIG,           "account-replay-" + UUID.randomUUID());
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,  "earliest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
@@ -61,13 +56,6 @@ public class UserEventReplayService {
 
         int replayed = 0;
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            // Manual partition assignment instead of subscribe(): replay is a one-shot read of
-            // the whole topic by a throwaway consumer, so there's no need for consumer-group
-            // rebalancing -- and subscribe() loses the race between "partition assigned" and
-            // "starting offset actually resolved", which can make poll() return empty results
-            // even after consumer.assignment() is non-empty, fooling an empty-poll-count
-            // heuristic into stopping before anything is ever read. Tracking real end offsets
-            // avoids that race entirely.
             List<PartitionInfo> partitionInfos = consumer.partitionsFor(TOPIC);
             List<TopicPartition> partitions = new ArrayList<>();
             for (PartitionInfo pi : partitionInfos) {

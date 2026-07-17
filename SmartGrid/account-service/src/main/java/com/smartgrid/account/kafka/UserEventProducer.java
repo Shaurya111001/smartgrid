@@ -28,12 +28,6 @@ public class UserEventProducer {
         this.objectMapper  = objectMapper;
     }
 
-    /**
-     * Publishes synchronously: blocks until the broker acknowledges the write (or the
-     * timeout/error path throws). Callers rely on this to know the event is actually durable
-     * in Kafka before treating the underlying user mutation as successful — event sourcing only
-     * holds if "published" means "acknowledged", not just "handed to the producer".
-     */
     public void publish(UserEvent event) {
         String json;
         try {

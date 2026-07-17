@@ -4,7 +4,7 @@ import java.time.Instant;
 
 public class UserEvent {
 
-    private String  eventType;   // UserRegistered | UserUpdated | UserDeleted
+    private String  eventType;
     private String  userId;
     private String  name;
     private String  email;

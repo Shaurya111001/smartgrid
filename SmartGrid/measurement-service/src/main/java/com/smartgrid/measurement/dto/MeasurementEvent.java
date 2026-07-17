@@ -4,10 +4,10 @@ import java.time.Instant;
 
 public class MeasurementEvent {
 
-    private String  eventType;     // MeasurementReported
+    private String  eventType;
     private String  nodeId;
     private String  districtId;
-    private String  type;          // PRODUCER | CONSUMER
+    private String  type;
     private double  energyValue;
     private Instant timestamp;
 

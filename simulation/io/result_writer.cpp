@@ -39,5 +39,3 @@ void ResultWriter::record_benchmark(const std::string& scenario, const std::stri
     f << scenario << "," << strategy << "," << processes << "," << rank << ","
       << districts_owned << "," << nodes_owned << "," << duration_ms << "\n";
 }
-
-

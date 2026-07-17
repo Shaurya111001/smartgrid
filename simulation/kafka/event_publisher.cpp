@@ -7,8 +7,6 @@
 #include <rdkafka.h>
 #endif
 
-// No external JSON dependency: simulation will emit plain JSON strings built locally.
-
 struct EventPublisher::Impl {
 #ifdef RDKAFKA_AVAILABLE
     rd_kafka_t* rk = nullptr;
@@ -47,8 +45,6 @@ std::optional<std::unique_ptr<EventPublisher>> EventPublisher::create(const std:
         std::cerr << "Failed to create rdkafka producer: " << errstr << std::endl;
         return std::nullopt;
     }
-    // rd_kafka_new() takes ownership of conf and frees it internally on success;
-    // clear our pointer so the destructor doesn't double-free it.
     pub->impl->conf = nullptr;
 
     return std::optional<std::unique_ptr<EventPublisher>>(std::move(pub));
@@ -67,8 +63,6 @@ bool EventPublisher::publish(const std::string& topic, const std::string& key, c
         return false;
     }
 
-    // rd_kafka_produce() returns 0 on success or -1 on error (with the actual
-    // error code available via rd_kafka_last_error()), not a rd_kafka_resp_err_t.
     int ret = rd_kafka_produce(
         rkt,
         RD_KAFKA_PARTITION_UA,
@@ -85,7 +79,6 @@ bool EventPublisher::publish(const std::string& topic, const std::string& key, c
         return false;
     }
 
-    // Let librdkafka handle delivery in background; optionally flush soon
     rd_kafka_poll(impl->rk, 0);
     return true;
 #else

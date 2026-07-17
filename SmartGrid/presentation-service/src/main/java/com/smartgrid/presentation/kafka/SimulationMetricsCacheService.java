@@ -19,13 +19,10 @@ public class SimulationMetricsCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(SimulationMetricsCacheService.class);
 
-    // Bound how many step/rank events we keep per run so a long-running or
-    // repeatedly-triggered simulation can't grow this cache unbounded.
     private static final int MAX_EVENTS_PER_RUN = 500;
 
     private final ObjectMapper objectMapper;
 
-    // runId -> ordered list of per-step/per-rank metric events
     private final Map<String, List<Map<String, Object>>> cache = new ConcurrentHashMap<>();
 
     public SimulationMetricsCacheService(ObjectMapper objectMapper) {

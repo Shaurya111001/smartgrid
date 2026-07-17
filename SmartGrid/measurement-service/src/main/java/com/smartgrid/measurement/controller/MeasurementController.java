@@ -28,11 +28,9 @@ public class MeasurementController {
         this.nodeCacheService = nodeCacheService;
     }
 
-    // ──── POST /measurements ──────────────────────────────────────────
     @PostMapping
     public ResponseEntity<?> reportMeasurement(@RequestBody MeasurementRequest request) {
 
-        // Validate the node exists
         if (!nodeCacheService.nodeExists(request.getNodeId())) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "Unknown node: " + request.getNodeId()));

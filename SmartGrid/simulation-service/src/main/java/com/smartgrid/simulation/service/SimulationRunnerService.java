@@ -38,9 +38,6 @@ public class SimulationRunnerService {
     @Value("${simulation.kafka-bootstrap-servers}")
     private String kafkaBootstrapServers;
 
-    // runId -> current status. In-memory only: run history doesn't need to
-    // survive a restart of this service, it's a live trigger/monitor, not a
-    // system of record (the simulation's own output already lands in Kafka).
     private final Map<String, SimulationRunStatus> runs = new ConcurrentHashMap<>();
 
     public String startRun(SimulationRunRequest request) {
@@ -49,9 +46,6 @@ public class SimulationRunnerService {
         String runId = UUID.randomUUID().toString();
         runs.put(runId, new SimulationRunStatus(runId, State.RUNNING, null));
 
-        // --allow-run-as-root is required because the container runs mpirun as
-        // root; it's a no-op (and harmless) when not running as root, so it's
-        // always included rather than conditioned on the current user.
         List<String> command = List.of(
                 "mpirun", "-np", String.valueOf(request.processes()), "--oversubscribe", "--allow-run-as-root",
                 binaryPath, request.scenario(), request.strategy(), String.valueOf(request.districts()));
@@ -62,9 +56,6 @@ public class SimulationRunnerService {
         processBuilder.environment().put("SIMULATION_RUN_ID", runId);
         processBuilder.redirectErrorStream(true);
 
-        // Run on its own thread so this HTTP request can return immediately with
-        // the runId; the frontend polls getStatus()/the metrics topic afterward
-        // rather than holding a connection open for the whole simulation.
         Thread runnerThread = new Thread(() -> execute(runId, processBuilder), "simulation-run-" + runId);
         runnerThread.setDaemon(true);
         runnerThread.start();
@@ -73,9 +64,6 @@ public class SimulationRunnerService {
     }
 
     private void execute(String runId, ProcessBuilder processBuilder) {
-        // Keep only the tail so a long run can't grow this unbounded; it exists
-        // purely to explain a non-zero exit code (mpirun/the binary write their
-        // errors to stdout/stderr, both merged here via redirectErrorStream).
         java.util.ArrayDeque<String> tailOutput = new java.util.ArrayDeque<>();
         try {
             Process process = processBuilder.start();

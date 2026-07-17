@@ -29,14 +29,11 @@ public class UserController {
         this.userEventProducer = userEventProducer;
     }
 
-    // ──── POST /users/register ────────────────────────────────────────
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody User request) {
         String userId = "u_" + UUID.randomUUID().toString().substring(0, 8);
         User user = new User(userId, request.getName(), request.getEmail());
 
-        // Publish first: only commit to the local store once Kafka has actually
-        // acknowledged the event, so the two can never diverge on a publish failure.
         UserEvent event = new UserEvent("UserRegistered", userId, user.getName(), user.getEmail());
         userEventProducer.publish(event);
 
@@ -46,7 +43,6 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.CREATED).body(user);
     }
 
-    // ──── PUT /users/{id} ─────────────────────────────────────────────
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable("id") String id,
                                     @RequestBody User request) {
@@ -66,7 +62,6 @@ public class UserController {
         return ResponseEntity.ok(user);
     }
 
-    // ──── DELETE /users/{id} ──────────────────────────────────────────
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable("id") String id) {
         if (!userRepository.existsById(id)) {
@@ -83,13 +78,11 @@ public class UserController {
         return ResponseEntity.ok(Map.of("message", "User deleted", "userId", id));
     }
 
-    // ──── GET /users (convenience — list all users) ───────────────────
     @GetMapping
     public ResponseEntity<Collection<User>> listAll() {
         return ResponseEntity.ok(userRepository.findAll());
     }
 
-    // ──── GET /users/{id} (convenience — get single user) ─────────────
     @GetMapping("/{id}")
     public ResponseEntity<?> getById(@PathVariable("id") String id) {
         return userRepository.findById(id)

@@ -17,16 +17,12 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/**
- * Every 60 seconds, drains accumulated usage and publishes
- * a UsageRecordCreated event per user to the billing-events topic.
- */
 @Component
 public class BillingScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(BillingScheduler.class);
     private static final String TOPIC = "billing-events";
-    private static final double RATE_PER_KWH = 0.20; // €/kWh
+    private static final double RATE_PER_KWH = 0.20;
 
     private final MeasurementReplayService replayService;
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -42,7 +38,7 @@ public class BillingScheduler {
         this.objectMapper  = objectMapper;
     }
 
-    @Scheduled(fixedRate = 60_000) // every 60 seconds
+    @Scheduled(fixedRate = 60_000)
     public void generateBillingRecords() {
         Instant now = Instant.now();
         Instant periodStart = lastBillingTime;

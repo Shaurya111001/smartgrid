@@ -2,9 +2,6 @@
 #include <cstdlib>
 #include <random>
 
-// Fixed seed (not std::random_device) so repeated runs with the same scenario are
-// reproducible -- required to fairly compare partitioning strategies against each
-// other on identical underlying data, per the assignment's comparison requirement.
 static std::default_random_engine generator(42);
 
 Producer::Producer(uint32_t node_id, uint32_t district_id, double max_generation)
@@ -12,7 +9,7 @@ Producer::Producer(uint32_t node_id, uint32_t district_id, double max_generation
       max_generation(max_generation) {}
 
 double Producer::compute_energy() {
-    
+
     std::normal_distribution<double> dist(max_generation * 0.7,
                                           max_generation * 0.2);
     double energy = dist(generator);
